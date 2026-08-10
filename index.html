@@ -1036,7 +1036,8 @@ const MENUS={
     body:'<b>↑</b> gas &nbsp; <b>↓</b> brake &nbsp; <b>← →</b> steer &nbsp; <b>SPACE</b> drift-hop &nbsp; <b>SHIFT</b> turbo &nbsp; <b>F</b> fire<br><br>Grab glowing <b>?</b> boxes for power-ups: rapid-fire, spread shot, shield, or instant nitro. Hit gold <b>ramps</b> at speed to launch over trouble. Dodge the <b>spikes</b> — they wreck you.<br><br>Everyone fights everyone. Leaders ease up so you can reel them in — but slack off and the dead will bury you.<br><br>Single Race is one 3-lap sprint. Tournament is a 4-race cup — points by finish, highest total is champion.',
     items:[ {label:'◀ BACK', act:()=>openMenu('main')} ]},
   options:{ kick:'', title:'OPTIONS', items:[
-    {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn)engineStop(); paintMenuSel(); }},
+    {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
+    {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); paintMenuSel(); }},
     {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn; document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
@@ -1071,9 +1072,9 @@ function paintMenuSel(){ const items=MENUS[curMenu].items;
   }); }
 function menuMove(d){ const n=MENUS[curMenu].items.length; menuSel=(menuSel+d+n)%n; paintMenuSel(); beep(560,.05); }
 function menuActivate(){ beep(760,.08); MENUS[curMenu].items[menuSel].act(); }
-function pauseRace(){ engineStop(); openMenu('pause'); }
-function resumeRace(){ closeMenu(); state='race'; last=performance.now(); engineStart(); }
-function quitToMenu(){ closeMenu(); engineStop(); openMenu('main'); }
+function pauseRace(){ engineStop(); musicStop(); openMenu('pause'); }
+function resumeRace(){ closeMenu(); state='race'; last=performance.now(); engineStart(); musicStart(); }
+function quitToMenu(){ closeMenu(); engineStop(); musicStop(); openMenu('main'); }
 
 /* ================================================================
    MODE SELECT · CHARACTER SELECT · TOURNAMENT
@@ -1153,7 +1154,7 @@ function countdown(n){
   const tick=(v)=>{
     if(v===0){ cn.textContent='GO!'; beep(880,.18);
       setTimeout(()=>{el.classList.remove('show');},700);
-      state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart();
+      state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart(); musicStart();
       rivals.forEach(r=>r.lapStart=raceStart);
       return;
     }
@@ -1173,7 +1174,7 @@ function onPlayerLap(){
   beep(660,.1);
 }
 function finish(){
-  state='finish'; elapsed=(performance.now()-raceStart)/1000; engineStop();
+  state='finish'; elapsed=(performance.now()-raceStart)/1000; engineStop(); musicStop();
   if(player.best<Infinity && (!bestLap||player.best<bestLap)){ bestLap=player.best; saveBest(bestLap); }
   // full finishing order of the field
   const order=[player,...rivals].slice().sort((a,b)=>b.progress-a.progress);
@@ -1230,7 +1231,7 @@ function loop(now){
     updateZombies(dt);
     kartCollisions();
     updateProgress(player,now);
-    for(const r of rivals) updateProgress(r,now);
+    if(state==='race') for(const r of rivals) updateProgress(r,now);
     // place
     const place=1+rivals.filter(r=>r.progress>player.progress).length;
     document.getElementById('hPos').innerHTML=place+'<small>PLACE</small>';
@@ -1276,7 +1277,7 @@ function buildTrackObjects(){
   const put=(i,type,off)=>{ const a=CENTER[i%N], b=CENTER[(i+1)%N];
     const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1, nx=-dy/l, ny=dx/l;
     TOBJ.push({x:a.x+nx*(off||0), y:a.y+ny*(off||0), type, cool:0, node:i%N}); };
-  for(let k=0;k<10;k++) put(Math.floor((k+0.5)/10*N), 'box', (Math.random()*50-25));
+  for(let k=0;k<5;k++) put(Math.floor((k+0.5)/5*N), 'box', (Math.random()*50-25));
   for(let k=0;k<3;k++)  put(Math.floor((k+0.3)/3*N), 'ramp', 0);
   for(let k=0;k<8;k++)  put(Math.floor((k+0.15)/8*N), 'spike', (Math.random()<0.5?1:-1)*(ROADW-8));
 }
@@ -1294,7 +1295,7 @@ function updateTrackObjects(dt){
     for(const k of [player,...rivals]){
       if(k.dead>0) continue;
       const d=Math.hypot(k.x-o.x,k.y-o.y);
-      if(o.type==='box'){ if(d<26){ grantPower(k); o.cool=6; break; } }
+      if(o.type==='box'){ if(d<26){ grantPower(k); o.cool=12; break; } }
       else if(o.type==='ramp'){ if(d<30 && k.air<=0 && Math.abs(k.spd)>130){ k.air=0.72; k.vx*=1.12; k.vy*=1.12; if(k.isPlayer)beep(500,.12); } }
       else if(o.type==='spike'){ if(d<20 && k.air<=0 && k.inv<=0){ damageKart(k,45,null); k.inv=0.6; if(k.isPlayer)beep(120,.12); } }
     }
@@ -1495,6 +1496,349 @@ function beep(f,d){ if(!soundOn)return; try{ if(!actx)actx=new(window.AudioConte
   const o=actx.createOscillator(),g=actx.createGain(); o.connect(g);g.connect(actx.destination);
   o.type='square';o.frequency.value=f; g.gain.setValueAtTime(.08,actx.currentTime);
   g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+d); o.start();o.stop(actx.currentTime+d);}catch(e){} }
+
+/* ================================================================
+   MUSIC — six original scores, one per circuit
+   Same low-end engine throughout (deep kick · sub · growl bass ·
+   low toms) so the soundtrack feels like one album, but each track
+   gets its own tempo, key, riff, drum feel and signature voice
+   themed to the circuit's name.
+   Nothing sits above the bass register except quiet signature hits.
+   ================================================================ */
+let musicOn=true;
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+const MUS={playing:false,step:0,next:0,timer:null,bus:null,nb:null,lp:null,sc:null,spf:0,steps:0};
+
+/* Riff shorthand: 16 slots per bar, offset in semitones from bar root, _ = rest */
+const _=null;
+const SCORES=[
+ /* ── 0 · THE DEADLY 500 — relentless, motorik, engine-like. Fastest. ── */
+ { bpm:136, bars:32, cut:5200, gain:0.465, sig:'siren',
+   prog:[38,38,36,36,38,38,34,33],
+   drums:'drive',
+   riff:[
+    [0,_,0,_, 0,_,0,_, 0,_,0,_, 12,_,0,_],
+    [0,_,0,_, 0,_,0,_, 7,_,7,_, 0,_,0,_],
+    [0,_,0,_, 0,_,0,_, 0,_,12,_, 0,_,0,_],
+    [0,_,0,_, 0,_,7,_, 0,_,0,_, 0,_,0,_],
+    [0,_,0,_, 0,_,0,_, 0,_,0,_, 12,_,0,_],
+    [0,_,0,_, 0,_,0,_, 7,_,7,_, 0,_,0,_],
+    [0,_,0,_, 12,_,0,_, 0,_,7,_, 0,_,0,_],
+    [0,_,0,0, 0,_,0,0, 0,_,0,0, 0,0,0,0]]},
+
+ /* ── 1 · FRANKENSTEIN'S CASTLE — lurching, uneven monster gait, voltage ── */
+ { bpm:116, bars:32, cut:4600, gain:0.465, sig:'zap',
+   prog:[40,40,36,36,40,40,33,35],
+   drums:'lurch',
+   riff:[
+    [0,_,_,_, _,_,0,_, 0,_,_,_, _,0,_,_],
+    [0,_,_,_, _,_,0,_, 12,_,_,0, _,_,_,_],
+    [0,_,_,_, _,_,0,_, 0,_,_,_, _,7,_,_],
+    [0,_,_,0, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,0,_, 0,_,_,_, _,0,_,_],
+    [0,_,_,_, _,_,0,_, 12,_,_,0, _,_,_,_],
+    [0,_,_,_, _,_,7,_, 0,_,_,_, _,0,_,_],
+    [0,_,_,0, 0,_,_,0, 0,_,_,0, 0,_,0,_]]},
+
+ /* ── 2 · DRACULA'S CASTLE — gothic, elegant menace, 6/8 sway, organ ── */
+ { bpm:120, bars:32, cut:4200, gain:0.465, sig:'organ',
+    prog:[33,33,29,31,33,33,29,40],
+   drums:'sway',
+   riff:[
+    [0,_,_,0, _,_,7,_, _,0,_,_, 12,_,_,_],
+    [0,_,_,0, _,_,0,_, _,7,_,_, 0,_,_,_],
+    [0,_,_,0, _,_,12,_, _,7,_,_, 0,_,_,_],
+    [0,_,_,0, _,_,7,_, _,0,_,_, 0,_,_,_],
+    [0,_,_,0, _,_,7,_, _,0,_,_, 12,_,_,_],
+    [0,_,_,0, _,_,0,_, _,7,_,_, 0,_,_,_],
+    [0,_,_,0, _,_,12,_, _,7,_,_, 0,_,_,_],
+    [0,_,_,_, _,_,11,_, _,_,_,_, 0,_,_,_]]},
+
+ /* ── 3 · CRYSTAL LAKE PASS — stalking. Mostly silence, then a stab. ── */
+ { bpm:100, bars:24, cut:3800, gain:0.465, sig:'stalk',
+   prog:[30,30,30,30,35,35,30,30],
+   drums:'stalk',
+   riff:[
+    [0,_,_,_, _,_,_,_, _,_,_,_, _,_,_,_],
+    [_,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, _,_,_,_, 3,_,_,_],
+    [_,_,_,_, 0,_,_,_, _,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, _,_,_,_, _,_,_,_],
+    [_,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, 5,_,_,_, _,_,_,_],
+    [0,_,_,_, 0,_,_,_, 0,_,_,_, 0,_,0,_]]},
+
+ /* ── 4 · RACCOON CITY RACEWAY — industrial, alarms, machinery ── */
+ { bpm:126, bars:32, cut:5000, gain:0.465, sig:'alarm',
+   prog:[36,36,34,34,36,36,31,32],
+   drums:'machine',
+   riff:[
+    [0,_,0,_, _,0,_,_, 0,_,0,_, _,0,_,_],
+    [0,_,0,_, _,0,_,_, 0,_,_,0, _,_,0,_],
+    [0,_,0,_, _,0,_,_, 12,_,0,_, _,0,_,_],
+    [0,_,0,_, _,7,_,_, 0,_,0,_, _,0,_,_],
+    [0,_,0,_, _,0,_,_, 0,_,0,_, _,0,_,_],
+    [0,_,0,_, _,0,_,_, 0,_,_,0, _,_,0,_],
+    [0,_,0,_, _,12,_,_, 0,_,7,_, _,0,_,_],
+    [0,0,_,0, 0,_,0,0, _,0,0,_, 0,_,0,0]]},
+
+ /* ── 5 · AMITYVILLE RACEWAY — slow dread, heartbeat, broken lullaby ── */
+ { bpm:104, bars:24, cut:4000, gain:0.465, sig:'bell',
+   prog:[31,31,36,36,34,34,31,33],
+   drums:'heart',
+   riff:[
+    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, _,_,7,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,12,_, _,_,_,_, 0,_,_,_],
+    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
+    [0,_,_,_, _,_,_,_, _,_,7,_, _,_,_,_],
+    [0,_,_,_, 0,_,_,_, _,_,_,_, 0,_,_,_],
+    [0,_,_,0, _,_,_,_, 0,_,_,0, _,_,_,_]]},
+];
+
+function sectionOf(bar,bars){ const q=bars/4; return bar<q?0 : bar<q*2?1 : bar<q*3?2 : 3; }
+
+function musNoise(){ if(MUS.nb)return MUS.nb;
+  const b=actx.createBuffer(1,actx.sampleRate*1,actx.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  MUS.nb=b; return b; }
+
+/* ---------------- core voices (shared by every score) ---------------- */
+function mKick(t,hard){ const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(hard?115:95,t);
+  o.frequency.exponentialRampToValueAtTime(33,t+0.16);
+  g.gain.setValueAtTime(hard?0.85:0.6,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.34);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.36);
+  const c=actx.createBufferSource(),hp=actx.createBiquadFilter(),cg=actx.createGain();
+  c.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=1200;
+  cg.gain.setValueAtTime(0.05,t); cg.gain.exponentialRampToValueAtTime(0.001,t+0.02);
+  c.connect(hp); hp.connect(cg); cg.connect(MUS.bus); c.start(t); c.stop(t+0.03); }
+
+function mTom(t,hz){ const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(hz,t); o.frequency.exponentialRampToValueAtTime(hz*0.55,t+0.22);
+  g.gain.setValueAtTime(0.34,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.32);
+  const n=actx.createBufferSource(),bp=actx.createBiquadFilter(),ng=actx.createGain();
+  n.buffer=musNoise(); bp.type='bandpass'; bp.frequency.value=hz*2.2; bp.Q.value=1.4;
+  ng.gain.setValueAtTime(0.06,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.09);
+  n.connect(bp); bp.connect(ng); ng.connect(MUS.bus); n.start(t); n.stop(t+0.1); }
+
+function mSub(t,m,dur){ const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.value=mtof(m);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.34,t+0.015);
+  g.gain.setValueAtTime(0.34,t+dur*0.7); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+dur+0.03); }
+
+function mGrowl(t,m,dur,vol){ const o=actx.createOscillator(),o2=actx.createOscillator(),
+  f=actx.createBiquadFilter(),g=actx.createGain(); const hz=mtof(m);
+  o.type='sawtooth'; o.frequency.value=hz;
+  o2.type='sawtooth'; o2.frequency.value=hz*1.012;
+  f.type='lowpass'; f.Q.value=7;
+  f.frequency.setValueAtTime(560,t); f.frequency.exponentialRampToValueAtTime(180,t+dur);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.02);
+  g.gain.setValueAtTime(vol,t+dur*0.65); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(f); o2.connect(f); f.connect(g); g.connect(MUS.bus);
+  o.start(t); o2.start(t); o.stop(t+dur+0.03); o2.stop(t+dur+0.03); }
+
+function mDrone(t,m,dur,vol){ const o=actx.createOscillator(),o2=actx.createOscillator(),
+  f=actx.createBiquadFilter(),g=actx.createGain(); const hz=mtof(m), v=vol||0.13;
+  o.type='triangle'; o.frequency.value=hz; o2.type='sawtooth'; o2.frequency.value=hz*0.997;
+  f.type='lowpass'; f.frequency.value=420;
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(v,t+0.5);
+  g.gain.setValueAtTime(v,t+dur*0.6); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(f); o2.connect(f); f.connect(g); g.connect(MUS.bus);
+  o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05); }
+
+function mHat(t,acc){ const s=actx.createBufferSource(),hp=actx.createBiquadFilter(),
+  lp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=5000;
+  lp.type='lowpass'; lp.frequency.value=9000;
+  g.gain.setValueAtTime(acc?0.055:0.025,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+  s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.05); }
+
+/* ---------------- signature voices (one per circuit) ---------------- */
+// DEADLY 500 — a distant klaxon wailing over the speedway
+function sSiren(t){ const o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
+  o.type='sawtooth'; o.frequency.setValueAtTime(160,t);
+  o.frequency.linearRampToValueAtTime(300,t+0.9); o.frequency.linearRampToValueAtTime(150,t+1.9);
+  f.type='lowpass'; f.frequency.value=900;
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.05,t+0.4);
+  g.gain.exponentialRampToValueAtTime(0.001,t+2.0);
+  o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+2.05); }
+
+// FRANKENSTEIN — Tesla coil discharge
+function sZap(t){ const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); bp.type='bandpass'; bp.Q.value=2.2;
+  bp.frequency.setValueAtTime(2600,t); bp.frequency.exponentialRampToValueAtTime(700,t+0.28);
+  g.gain.setValueAtTime(0.14,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.32);
+  const o=actx.createOscillator(),og=actx.createGain();   // the arc's pitched crack
+  o.type='square'; o.frequency.setValueAtTime(420,t); o.frequency.exponentialRampToValueAtTime(90,t+0.18);
+  og.gain.setValueAtTime(0.05,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+  o.connect(og); og.connect(MUS.bus); o.start(t); o.stop(t+0.22); }
+
+// DRACULA — low pipe-organ chord swell (root + fifth + octave)
+function sOrgan(t,root,dur){ const g=actx.createGain(); g.gain.value=1; g.connect(MUS.bus);
+  [0,7,12].forEach((iv,n)=>{ const o=actx.createOscillator(),og=actx.createGain(),f=actx.createBiquadFilter();
+    o.type=n===2?'triangle':'sawtooth'; o.frequency.value=mtof(root+iv);
+    f.type='lowpass'; f.frequency.value=760;
+    const v=n===0?0.075:n===1?0.05:0.035;
+    og.gain.setValueAtTime(0.001,t); og.gain.linearRampToValueAtTime(v,t+0.35);
+    og.gain.setValueAtTime(v,t+dur*0.65); og.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(f); f.connect(og); og.connect(g); o.start(t); o.stop(t+dur+0.05); }); }
+
+// CRYSTAL LAKE — breathy whisper-stab. Air, not tone. The stalker's cue.
+function sStalk(t,n){ for(let i=0;i<n;i++){ const tt=t+i*0.14;
+    const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
+    s.buffer=musNoise(); bp.type='bandpass'; bp.Q.value=4.5;
+    bp.frequency.setValueAtTime(1400-i*120,tt);
+    g.gain.setValueAtTime(0.001,tt); g.gain.linearRampToValueAtTime(0.075,tt+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001,tt+0.12);
+    s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(tt); s.stop(tt+0.14); } }
+
+// RACCOON CITY — two-tone containment alarm + metal clank
+function sAlarm(t){ [0,0.42].forEach((d,i)=>{ const o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
+    o.type='square'; o.frequency.value=i?300:225;
+    f.type='lowpass'; f.frequency.value=1100;
+    g.gain.setValueAtTime(0.001,t+d); g.gain.linearRampToValueAtTime(0.045,t+d+0.05);
+    g.gain.setValueAtTime(0.045,t+d+0.3); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.4);
+    o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t+d); o.stop(t+d+0.42); }); }
+function sClank(t){ const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); bp.type='bandpass'; bp.frequency.value=2200; bp.Q.value=6;
+  g.gain.setValueAtTime(0.06,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.13);
+  s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.15); }
+
+// AMITYVILLE — a detuned music-box bell, the lullaby gone wrong
+function sBell(t,m){ const o=actx.createOscillator(),o2=actx.createOscillator(),g=actx.createGain();
+  const hz=mtof(m);
+  o.type='sine'; o.frequency.value=hz;
+  o2.type='sine'; o2.frequency.value=hz*2.76;            // inharmonic = bell, not tone
+  const g2=actx.createGain(); g2.gain.value=0.35; o2.connect(g2); g2.connect(g);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.055,t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.001,t+1.5);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o2.start(t); o.stop(t+1.55); o2.stop(t+1.55); }
+
+/* ---------------- the sequencer ---------------- */
+function musStep(i,t){
+  const S=MUS.sc, SPF=MUS.spf, BARS=S.bars;
+  const bar=(i>>4)%BARS, s=i&15, sec=sectionOf(bar,BARS), pb=bar%8, root=S.prog[pb];
+  let subM=root-12; if(subM<26) subM+=12;      // keep the sub audible (>=~36Hz)
+  const full=sec===3, dread=sec===2;
+
+  /* ---- DREAD BREAKDOWN: shared shape, per-track colour ---- */
+  if(dread){
+    if(s===0){ mKick(t,true); mSub(t,subM,SPF*14); mDrone(t,root,SPF*15,0.13); }
+    if(s===8 && pb%2===1) mTom(t,78);
+    if(pb===7 && s>=8 && s%2===0) mTom(t,66+s*3);        // roll back into the drop
+    if(S.sig==='stalk' && s===0 && pb%2===0) sStalk(t,3);
+    if(S.sig==='zap'   && s===12 && pb%2===1) sZap(t);
+    if(S.sig==='organ' && s===0 && pb%4===0) sOrgan(t,root,SPF*15);
+    if(S.sig==='bell'  && s===0) sBell(t,root+24);
+    if(S.sig==='alarm' && s===0 && pb%2===0) sAlarm(t);
+    if(S.sig==='siren' && s===0 && pb===0) sSiren(t);
+    return;
+  }
+
+  /* ---- DRUMS: each circuit walks differently ---- */
+  switch(S.drums){
+    case 'drive':                                        // four-on-the-floor, never lets up
+      if(s%4===0) mKick(t,s===0);
+      if(s===4||s===12) mTom(t,s===4?96:78);
+      if(s%2===1) mHat(t,s%4===1);
+      if(full&&s%4===2) mHat(t,false);
+      break;
+    case 'lurch':                                        // good foot, dragged foot
+      if(s===0) mKick(t,true);
+      if(s===7) mKick(t,false);
+      if(s===10) mTom(t,84);
+      if(full&&s===13) mKick(t,false);
+      if(s===4||s===12) mTom(t,s===4?96:72);
+      if(s%4===2) mHat(t,false);
+      break;
+    case 'sway':                                         // 6/8 gothic waltz over 16
+      if(s===0||s===6||s===12) mKick(t,s===0);
+      if(s===3||s===9||s===15) mHat(t,false);
+      if(s===6) mTom(t,88);
+      if(full&&s===14) mTom(t,70);
+      break;
+    case 'stalk':                                        // almost nothing. space is the threat.
+      if(s===0) mKick(t,true);
+      if(full&&s===8) mKick(t,false);
+      if(s===12) mTom(t,80);
+      if(full&&s===6) mHat(t,false);
+      break;
+    case 'machine':                                      // pistons and stamped metal
+      if(s%4===0) mKick(t,s===0);
+      if(s===4||s===12) mTom(t,s===4?92:76);
+      if(s%2===0) sClank(t);
+      if(full&&s%4===3) mHat(t,true);
+      break;
+    case 'heart':                                        // lub-dub, lub-dub
+      if(s===0) mKick(t,true);
+      if(s===3) mKick(t,false);
+      if(s===8) mKick(t,true);
+      if(s===11) mKick(t,false);
+      if(full&&(s===6||s===14)) mTom(t,74);
+      break;
+  }
+
+  /* ---- SUB: the floor ---- */
+  if(s===0) mSub(t,subM,SPF*8);
+  if(s===8) mSub(t,subM,SPF*8);
+
+  /* ---- GROWL RIFF: enters at section 1, heavier at full ---- */
+  if(sec>=1){
+    const off=S.riff[pb][s];
+    if(off!==null && off!==undefined)
+      mGrowl(t, root+off, SPF*(full?2.6:2.2), full?0.2:0.15);
+  } else if(s===0||s===8){
+    mGrowl(t, root, SPF*6, 0.11);                        // intro: long root swells only
+  }
+
+  /* ---- SIGNATURE: sparse, so it stays an event ---- */
+  switch(S.sig){
+    case 'siren': if(s===0 && pb%4===2) sSiren(t); break;
+    case 'zap':   if(s===14 && pb%2===1) sZap(t); if(full&&s===6&&pb%4===3) sZap(t); break;
+    case 'organ': if(s===0 && pb%2===0) sOrgan(t,root,SPF*15); break;
+    case 'stalk': if(s===0 && pb%2===0) sStalk(t,3); if(full&&s===8&&pb%4===3) sStalk(t,3); break;
+    case 'alarm': if(s===0 && pb%4===0) sAlarm(t); break;
+    case 'bell':  if(s===0 && pb%2===0) sBell(t,root+24); if(full&&s===8) sBell(t,root+19); break;
+  }
+}
+
+function musicStart(){
+  if(!musicOn||!soundOn) return;
+  try{ if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    if(MUS.playing) return;
+    const S=SCORES[selTrack]||SCORES[0];                 // score follows the chosen circuit
+    MUS.sc=S; MUS.spf=60/S.bpm/4; MUS.steps=S.bars*16;
+    MUS.lp=actx.createBiquadFilter(); MUS.lp.type='lowpass'; MUS.lp.frequency.value=S.cut;
+    MUS.bus=actx.createGain(); MUS.bus.gain.value=0.0;
+    MUS.bus.connect(MUS.lp); MUS.lp.connect(actx.destination);
+    MUS.bus.gain.linearRampToValueAtTime(S.gain,actx.currentTime+1.2);
+    MUS.step=0; MUS.next=actx.currentTime+0.08; MUS.playing=true;
+    MUS.timer=setInterval(()=>{                          // lookahead scheduler, audio-clock timed
+      if(!MUS.playing) return;
+      while(MUS.next < actx.currentTime+0.12){
+        musStep(MUS.step,MUS.next);
+        MUS.next+=MUS.spf; MUS.step=(MUS.step+1)%MUS.steps;   // wraps on a bar line → seamless
+      }
+    },25);
+  }catch(e){}
+}
+function musicStop(){
+  if(!MUS.playing) return;
+  MUS.playing=false;
+  if(MUS.timer){ clearInterval(MUS.timer); MUS.timer=null; }
+  try{ const b=MUS.bus, l=MUS.lp, t=actx.currentTime;
+    b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value,t);
+    b.gain.linearRampToValueAtTime(0.0001,t+0.4);
+    setTimeout(()=>{ try{b.disconnect();l.disconnect();}catch(e){} },700);
+  }catch(e){}
+  MUS.bus=null; MUS.lp=null;
+}
 
 /* ---- resize display canvas to stage ---- */
 function resize(){ const s=document.getElementById('stage');
