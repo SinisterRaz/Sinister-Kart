@@ -129,7 +129,7 @@ html,body{height:100%;background:#000;overflow:hidden;font-family:var(--f-term);
     <div class="hud-tl">LAP <span class="v" id="hLap">1/3</span><br>TIME <span class="v" id="hTime">0:00.0</span><br>BEST <span class="v" id="hBest">--:--</span></div>
     <div class="hud-tr" id="hCP"></div>
     <div class="hud-pos" id="hPos">1<small>PLACE</small></div>
-    <div id="speed"><span class="n" id="hSpd">0</span> <span class="u">KPH</span></div>
+    <div id="speed"><span class="n" id="hSpd">0</span> <span class="u">MPH</span></div>
     <div id="turbo"><div class="fill" id="turboFill"></div><div class="tlbl">TURBO ▸ SHIFT</div></div>
     <div id="hpbar"><div class="fill" id="hpFill"></div><div class="tlbl">HULL ▸ F FIRE</div></div>
   </div>
@@ -217,11 +217,41 @@ let texData=null, texPix=null;
 // centerline points (closed loop)
 let CENTER=[], NCP=0;
 const CP_R = 82;           // checkpoint capture radius
-const ROADW = 66;          // half road width (world units)
-const WALLR = ROADW + 16;  // wall = collision tube radius around centerline
+let ROADW = 66;            // half road width (world units) — per-track, set by applyTheme
+let WALLR = ROADW + 16;    // wall = collision tube radius around centerline
+const ROADW_DEF = 66, SHOULDER_DEF = 16;
 
 /* ================================================================
    TRACKS — six completely distinct themed circuits
+   ================================================================ */
+/* ================================================================
+   TRACK GEOMETRY — notes for building tighter circuits later
+   ----------------------------------------------------------------
+   Each layout is a polar radius with harmonics:
+     r = H0 + H1·cos(θ+H2) + H3·cos(2θ+H4) + H5·cos(3θ+H6) + H7·cos(4θ+H8)
+   H0 is the base size. Higher harmonics add more lobes per lap, so
+   raising H5/H7 is how you get repeated bends rather than one big oval.
+   Strong high harmonics create concave sections = right turns amid lefts.
+
+   `twist` adds localized weave on top, and takes either one band or an
+   array of them. Each band is {from,to,freq,amp} in lap fractions:
+     from/to  where the section sits
+     freq     number of complete weaves inside it
+     amp      how far it pushes off line, in world units
+   The window is sin²(πu), which is zero with zero slope at both ends,
+   so a band always blends seamlessly and can't kink the loop.
+
+   MEASURED LIMITS (don't guess these — they were checked against the
+   existing circuits, and getting them wrong makes a track undrivable):
+     • min corner radius ≈ 1/max-curvature
+     • existing tracks run 216u (Amityville, sharpest) to 868u (Deadly 500)
+     • under ~200u is brutal at racing speed; 23u was flatly undrivable
+     • curvature scales as amp·(2π·freq / arc-length)², so DOUBLING freq
+       quarters the radius. Widen the band when adding weaves, or the
+       corner goes vicious fast.
+   For S-turns: one band, freq 2-3, amp 30-40, spread over 25%+ of the lap.
+   For switchbacks: several short bands with a gap between them, or push
+   H5/H7 up so the base shape itself doubles back.
    ================================================================ */
 const TRACKS=[
  { name:'THE DEADLY 500', sub:'SPEEDWAY OF THE DAMNED', harm:[1650,90,0.3,250,0.0,200,0.4,40,0], speedway:true,
@@ -235,7 +265,17 @@ const TRACKS=[
    decor:['spire','bat','grave','cross'], amb:[41,62] },
  { name:'CRYSTAL LAKE PASS', sub:'CAMP BLOOD', harm:[1480,230,0.5,150,0.0,190,1.0,170,0.3],
    col:{void:'#050f10',wall:'#12242a',face:'#1a3a3a',road:'#3a4448',shade:'#2e3a3e',rumA:'#0e5a5a',rumB:'#a0d0c8',dash:'rgba(0,229,255,.3)',fog:[8,22,24],skyA:'#04141a',skyB:'#0e3038',moon:'#d0f0f0',glow:'0,229,255'},
-   decor:['pine','cabin','sign','dock'], amb:[52,78] },
+   decor:['pine','cabin','sign','dock'], amb:[52,78],
+   // the lap is a tour: deep woods → the dock out over the lake → woods → the camp itself
+   zones:[{to:0.24,kind:'woods'},{to:0.54,kind:'dock'},{to:0.66,kind:'woods'},{to:0.86,kind:'camp'},{to:1.00,kind:'woods'}],
+   twist:{from:0.24,to:0.54,freq:3,amp:34},   // verified: 278u min radius, no self-intersection
+   water:true, stalker:true, killtrees:true, camp:true, ambience:'woods',
+   roadw:52, shoulder:30,        // narrow tarmac, then dirt runoff, then the trees
+   // exactly three signs on this circuit — nothing else. Text lives here so it's
+   // one edit to rename the camp if you ever want to.
+   signs:{welcome:['WELCOME TO','CAMP CRYSTAL LAKE'], lake:['CRYSTAL LAKE','NO SWIMMING AFTER DARK'], camp:['CAMP CRYSTAL LAKE','EST. 1935']},
+   landmarks:[{at:0.995,type:'archwelcome'},{at:0.238,type:'signlake'},{at:0.668,type:'signcamp'}],
+   lake:{void:'#04191c'} },
  { name:'RACCOON CITY RACEWAY', sub:'BIOHAZARD ZONE', harm:[1560,40,0.0,100,0.3,80,0.0,290,0.2],
    col:{void:'#0a0d06',wall:'#1c2410',face:'#2a3818',road:'#42463c',shade:'#34382e',rumA:'#5a7a10',rumB:'#c8c090',dash:'rgba(155,191,58,.4)',fog:[16,20,8],skyA:'#0c1006',skyB:'#28321a',moon:'#e0e0a0',glow:'155,191,58'},
    decor:['streetlight','wreck','biohazard','fence'], zombies:true, amb:[44,66] },
@@ -245,17 +285,47 @@ const TRACKS=[
 ];
 let selTrack=0, TH=TRACKS[0];
 function hexRGB(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
-function applyTheme(i){ selTrack=i; TH=TRACKS[i]; TH._skyA=hexRGB(TH.col.skyA); TH._skyB=hexRGB(TH.col.skyB); }
+function applyTheme(i){ selTrack=i; TH=TRACKS[i];
+  ROADW = TH.roadw || ROADW_DEF;                 // narrower tarmac = less room for error
+  WALLR = ROADW + (TH.shoulder || SHOULDER_DEF); // gap between tarmac edge and whatever stops you
+  TH._skyA=hexRGB(TH.col.skyA); TH._skyB=hexRGB(TH.col.skyB); }
 applyTheme(0);
 
+let LAKE=null;
+/* Same wobble the lake outline is drawn with, so the test matches the paint exactly. */
+function inLake(x,y,margin){
+  if(!LAKE) return false;
+  const dx=x-LAKE.x, dy=y-LAKE.y, d=Math.hypot(dx,dy);
+  const th=Math.atan2(dy,dx);
+  const wob=1+0.16*Math.sin(th*3+1.1)+0.1*Math.sin(th*5+2.3)+0.06*Math.sin(th*8);
+  return d < LAKE.r*wob - (margin||0);
+}
+function zoneAt(frac){ const Z=TH.zones; if(!Z) return 'plain';
+  for(const z of Z){ if(frac<z.to) return z.kind; } return Z[Z.length-1].kind; }
+function twistAt(frac){                       // localized weave, windowed so the loop stays smooth
+  const T=TH.twist; if(!T) return 0;
+  // accepts a single band or an array of them, so a track can have several
+  // independent twist sections (S-turns here, a switchback there)
+  const bands = Array.isArray(T) ? T : [T];
+  let sum=0;
+  for(const b of bands){
+    if(frac<b.from||frac>b.to) continue;
+    const u=(frac-b.from)/(b.to-b.from);
+    const win=Math.sin(Math.PI*u);   // 0 at both ends with zero slope → seamless blend
+    sum += b.amp*Math.sin(u*b.freq*Math.PI*2)*win*win;
+  }
+  return sum;
+}
 function buildTrack(){
   const cx=WORLD/2, cy=WORLD/2, H=TH.harm, C=TH.col;
+  LAKE=null;                        // cleared per build — no stale water on other circuits
   CENTER=[];
   const N=800;
   for(let i=0;i<N;i++){
     const th=i/N*Math.PI*2;
     // polar radius with harmonics — strong terms create concave sections (right turns amid lefts)
-    const r=H[0]+H[1]*Math.cos(th+H[2])+H[3]*Math.cos(2*th+H[4])+H[5]*Math.cos(3*th+H[6])+H[7]*Math.cos(4*th+H[8]);
+    let r=H[0]+H[1]*Math.cos(th+H[2])+H[3]*Math.cos(2*th+H[4])+H[5]*Math.cos(3*th+H[6])+H[7]*Math.cos(4*th+H[8]);
+    r+=twistAt(i/N);
     CENTER.push({x:cx+r*Math.cos(th), y:cy+r*Math.sin(th)});
   }
   tctx.setTransform(SCALE,0,0,SCALE,0,0);
@@ -266,17 +336,108 @@ function buildTrack(){
     tctx.beginPath();tctx.arc(Math.random()*WORLD,Math.random()*WORLD,r,0,7);tctx.fill();
   }
   tctx.lineJoin='round';tctx.lineCap='round';
+  paintLake();
   strokeLoop((WALLR+2)*2, C.wall);
   strokeLoop((WALLR-3)*2, C.face);
   strokeLoop(ROADW*2, C.road);
   strokeLoop(ROADW*2-8, C.shade);
   drawRumble();
+  paintDock();
+  paintCamp();
   tctx.setLineDash([16,22]); tctx.lineWidth=3; tctx.strokeStyle=C.dash;
   tctx.beginPath(); loopPath(); tctx.stroke(); tctx.setLineDash([]);
   drawStartLine();
   texData=tctx.getImageData(0,0,TEXRES,TEXRES); texPix=texData.data;
   tctx.setTransform(1,0,0,1,0,0);
   NCP=12;
+}
+/* ---- the dock: open black water, then a timber deck laid over it ---- */
+function arcRange(kind){ const Z=TH.zones; if(!Z) return null;
+  let lo=0; for(const z of Z){ if(z.kind===kind) return {from:lo,to:z.to}; lo=z.to; } return null; }
+/* The lake goes down BEFORE the road is stroked, so where the loop passes back
+   near the shore the tarmac paints over the water instead of being erased by it. */
+function paintLake(){
+  if(!TH.water) return;
+  const R=arcRange('dock'); if(!R) return;
+  const N=CENTER.length, i0=Math.floor(R.from*N), i1=Math.ceil(R.to*N);
+  const seg=(w,col,cap)=>{ tctx.lineWidth=w; tctx.strokeStyle=col; tctx.lineCap=cap||'round';
+    tctx.beginPath(); tctx.moveTo(CENTER[i0].x,CENTER[i0].y);
+    for(let i=i0+1;i<=i1;i++) tctx.lineTo(CENTER[i%N].x,CENTER[i%N].y);
+    tctx.stroke(); };
+  // a broad irregular body of black water, so the dock reads as crossing
+  // open water rather than following a canal
+  let cxs=0,cys=0,cn=0;
+  for(let i=i0;i<=i1;i++){ const p=CENTER[i%N]; cxs+=p.x; cys+=p.y; cn++; }
+  const lx=cxs/cn, ly=cys/cn;
+  let rad=0;
+  for(let i=i0;i<=i1;i++){ const p=CENTER[i%N]; rad=Math.max(rad,Math.hypot(p.x-lx,p.y-ly)); }
+  rad+=WALLR+150;
+  LAKE={x:lx,y:ly,r:rad};          // remembered so props don't get planted on the water
+  tctx.fillStyle=TH.lake?TH.lake.void:'#04191c';
+  tctx.beginPath();
+  for(let a=0;a<=64;a++){ const th=a/64*Math.PI*2;
+    const wob=1+0.16*Math.sin(th*3+1.1)+0.1*Math.sin(th*5+2.3)+0.06*Math.sin(th*8);
+    const px=lx+Math.cos(th)*rad*wob, py=ly+Math.sin(th)*rad*wob;
+    if(a===0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+  tctx.closePath(); tctx.fill();
+  // shoreline shelf — a lighter rim where the water meets the bank
+  tctx.strokeStyle='rgba(90,150,150,.18)'; tctx.lineWidth=14; tctx.stroke();
+  // make sure the water hugs the deck along the whole run
+  seg((WALLR+230)*2, TH.lake?TH.lake.void:'#04191c');
+  // faint moonlit ripples on the surface
+  tctx.save(); tctx.globalAlpha=0.5;
+  for(let i=i0;i<i1;i+=3){
+    const a=CENTER[i%N], b=CENTER[(i+1)%N];
+    const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
+    for(const side of [1,-1]) for(let r=0;r<4;r++){
+      const off=side*(WALLR+40+r*52+Math.sin(i*0.21+r)*16);
+      tctx.strokeStyle='rgba(140,220,225,'+(0.05+Math.random()*0.05)+')'; tctx.lineWidth=1.6;
+      tctx.beginPath(); tctx.moveTo(a.x+nx*off,a.y+ny*off);
+      tctx.lineTo(a.x+nx*off+dx*2.4,a.y+ny*off+dy*2.4); tctx.stroke();
+    }
+  }
+  tctx.restore();
+}
+/* The deck goes down AFTER the road, so the timber sits on top of the tarmac. */
+function paintDock(){
+  if(!TH.water) return;
+  const R=arcRange('dock'); if(!R) return;
+  const N=CENTER.length, i0=Math.floor(R.from*N), i1=Math.ceil(R.to*N);
+  const seg=(w,col,cap)=>{ tctx.lineWidth=w; tctx.strokeStyle=col; tctx.lineCap=cap||'round';
+    tctx.beginPath(); tctx.moveTo(CENTER[i0].x,CENTER[i0].y);
+    for(let i=i0+1;i<=i1;i++) tctx.lineTo(CENTER[i%N].x,CENTER[i%N].y);
+    tctx.stroke(); };
+  // the deck itself — dark timber, slightly narrower than the road so the edge reads as a drop
+  seg((ROADW+4)*2, '#2b1d14', 'butt');
+  seg((ROADW+1)*2, '#3a281a', 'butt');
+  // 4. plank seams across the deck
+  tctx.strokeStyle='rgba(12,8,5,.55)'; tctx.lineWidth=2.2;
+  for(let i=i0;i<i1;i+=2){
+    const a=CENTER[i%N], b=CENTER[(i+1)%N];
+    const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
+    tctx.beginPath(); tctx.moveTo(a.x+nx*(ROADW+1),a.y+ny*(ROADW+1));
+    tctx.lineTo(a.x-nx*(ROADW+1),a.y-ny*(ROADW+1)); tctx.stroke();
+  }
+  // 5. weathered lengthwise grain
+  tctx.strokeStyle='rgba(90,66,44,.35)'; tctx.lineWidth=1.4;
+  for(const off of [-42,-16,16,42]){
+    tctx.beginPath();
+    for(let i=i0;i<=i1;i++){ const a=CENTER[i%N], b=CENTER[(i+1)%N];
+      const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
+      const px=a.x+nx*off, py=a.y+ny*off;
+      if(i===i0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+    tctx.stroke();
+  }
+  // 6. low guard rail along both edges so the deck reads as raised over water
+  for(const side of [1,-1]){
+    tctx.strokeStyle='rgba(20,14,9,.9)'; tctx.lineWidth=5;
+    tctx.beginPath();
+    for(let i=i0;i<=i1;i++){ const a=CENTER[i%N], b=CENTER[(i+1)%N];
+      const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
+      const px=a.x+nx*side*(ROADW+3), py=a.y+ny*side*(ROADW+3);
+      if(i===i0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+    tctx.stroke();
+  }
 }
 function loopPath(){
   tctx.moveTo(CENTER[0].x,CENTER[0].y);
@@ -300,6 +461,55 @@ function drawRumble(){
     }
   }
 }
+/* Camp ground: packed dirt through the clearing, plank flooring where the road
+   runs straight through the dining hall. Painted after the tarmac, before markings. */
+function paintCamp(){
+  if(!TH.camp) return;
+  const R=arcRange('camp'); if(!R) return;
+  const N=CENTER.length, i0=Math.floor(R.from*N), i1=Math.ceil(R.to*N), span=i1-i0;
+  const run=(f0,f1,w,col,cap)=>{
+    const s0=i0+Math.floor(span*f0), s1=i0+Math.ceil(span*f1);
+    tctx.lineWidth=w; tctx.strokeStyle=col; tctx.lineCap=cap||'butt';
+    tctx.beginPath(); tctx.moveTo(CENTER[s0%N].x,CENTER[s0%N].y);
+    for(let i=s0+1;i<=s1;i++) tctx.lineTo(CENTER[i%N].x,CENTER[i%N].y);
+    tctx.stroke();
+  };
+  // packed dirt for the whole camp run
+  run(0,1,ROADW*2,'#4a3d2c');
+  run(0,1,ROADW*2-14,'#413526');
+  // wheel ruts worn into the dirt
+  for(const off of [-20,20]){
+    tctx.strokeStyle='rgba(30,24,16,.5)'; tctx.lineWidth=9; tctx.beginPath();
+    for(let i=i0;i<=i1;i++){ const f=frameAt(i,N);
+      const px=f.a.x+f.nx*off, py=f.a.y+f.ny*off;
+      if(i===i0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+    tctx.stroke();
+  }
+  // ---- the dining hall floor (u 0.38 → 0.60 matches buildCamp) ----
+  run(0.38,0.60,ROADW*2,'#4a3520');
+  run(0.38,0.60,ROADW*2-6,'#573f26');
+  const h0=i0+Math.floor(span*0.38), h1=i0+Math.ceil(span*0.60);
+  tctx.strokeStyle='rgba(24,16,8,.6)'; tctx.lineWidth=2.4;   // floorboard seams
+  for(let i=h0;i<h1;i+=2){ const f=frameAt(i,N);
+    tctx.beginPath();
+    tctx.moveTo(f.a.x+f.nx*ROADW, f.a.y+f.ny*ROADW);
+    tctx.lineTo(f.a.x-f.nx*ROADW, f.a.y-f.ny*ROADW); tctx.stroke(); }
+  tctx.strokeStyle='rgba(90,66,40,.4)'; tctx.lineWidth=1.6;  // lengthwise boards
+  for(const off of [-34,-12,12,34]){
+    tctx.beginPath();
+    for(let i=h0;i<=h1;i++){ const f=frameAt(i,N);
+      const px=f.a.x+f.nx*off, py=f.a.y+f.ny*off;
+      if(i===h0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+    tctx.stroke();
+  }
+  // threshold strips where you enter and leave the hall
+  for(const at of [0.38,0.60]){
+    const i=i0+Math.floor(span*at), f=frameAt(i,N);
+    tctx.strokeStyle='#2a1d10'; tctx.lineWidth=7; tctx.beginPath();
+    tctx.moveTo(f.a.x+f.nx*ROADW, f.a.y+f.ny*ROADW);
+    tctx.lineTo(f.a.x-f.nx*ROADW, f.a.y-f.ny*ROADW); tctx.stroke();
+  }
+}
 function drawStartLine(){
   const a=CENTER[0], b=CENTER[1];
   const ang=Math.atan2(b.y-a.y,b.x-a.x);
@@ -317,10 +527,17 @@ let CKPTS=[];
 /* ---- decor: billboarded roadside objects (trees, graves, crosses, braziers) ---- */
 let DECOR=[];
 let SPEEDWALL=[], SPEEDWALL_IN=[], SPEEDSTAND=[], TOWER=null;   // continuous speedway architecture
+/* per-zone prop palettes — weighted so the woods read as forest, not a prop sampler */
+const ZONE_PROPS={
+  woods:['pine','pinetall','pinetall','pine','pinesquat','deadtree','deadtree','twisted','birch','stump'],
+  dock: ['dock','dock','reeds','canoe','boathouse'],
+  camp: ['cabin','cabin','tent','campfire','canoe','pinesquat']   // signs are placed as landmarks, not scattered
+};
 function buildDecor(){
   DECOR=[]; const N=CENTER.length, types=TH.decor;
   if(TH.speedway){ buildSpeedwayDecor(N); return; }
   SPEEDWALL=[]; SPEEDWALL_IN=[]; SPEEDSTAND=[]; TOWER=null;
+  if(TH.zones){ buildZonedDecor(N); return; }
   for(let i=0;i<N;i+=4){
     const a=CENTER[i], b=CENTER[(i+1)%N];
     const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
@@ -342,6 +559,162 @@ function buildDecor(){
     if(x<80||x>WORLD-80||y<80||y>WORLD-80) continue;
     const type=TH.decor[(Math.random()*TH.decor.length)|0];
     DECOR.push({x,y,type,s:2.0+Math.random()*1.4});
+  }
+}
+function buildZonedDecor(N){
+  const pick=arr=>arr[(Math.random()*arr.length)|0];
+  for(let i=0;i<N;i+=2){
+    const frac=i/N, kind=zoneAt(frac);
+    const a=CENTER[i], b=CENTER[(i+1)%N];
+    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
+
+    if(kind==='dock'){
+      // out over open water: only pilings hugging the deck, nothing beyond
+      for(const side of [1,-1]){
+        if(Math.random()<0.45) continue;
+        const off=side*(WALLR+4+Math.random()*10);
+        const x=a.x+nx*off, y=a.y+ny*off;
+        if(x<24||x>WORLD-24||y<24||y>WORLD-24) continue;
+        DECOR.push({x,y,type:'dock',s:0.7+Math.random()*0.4});
+      }
+      if(i%56===0){ const side=Math.random()<0.5?1:-1, off=side*(WALLR+120+Math.random()*90);
+        const x=a.x+nx*off, y=a.y+ny*off;
+        if(x>60&&x<WORLD-60&&y>60&&y<WORLD-60) DECOR.push({x,y,type:pick(['boathouse','canoe','reeds']),s:1.5+Math.random()*0.9}); }
+      continue;
+    }
+
+    if(kind==='camp'){ continue; }   // camp is hand-laid below, not scattered
+
+    // ---- WOODS: the treeline starts exactly at the wall, so what stops you is
+    //      what you can see. Layers overlap into a continuous mass you can't
+    //      see through — occlusion comes from big near trunks, not sprite count. ----
+    for(const side of [1,-1]) for(let rep=0;rep<2;rep++){
+      const j=Math.random();                        // jitter down the segment
+      const bx=a.x+dx*j, by=a.y+dy*j;
+      const put=(prob,near,span,smin,ssp,edge)=>{
+        if(Math.random()>=prob) return;
+        const off=side*(WALLR+near+Math.random()*span);
+        const px=bx+nx*off, py=by+ny*off;
+        if(px<edge||px>WORLD-edge||py<edge||py>WORLD-edge) return;
+        if(inLake(px,py,-22)) return;               // no trees growing out of the lake
+        DECOR.push({x:px,y:py,type:pick(ZONE_PROPS.woods),s:smin+Math.random()*ssp});
+      };
+      // verified opaque: 100% of the land-facing sightline is blocked at both
+      // median and 10th percentile. Big near trunks do the occluding, which is
+      // far cheaper per sprite than piling on distant ones.
+      put(0.98,   0,  20, 1.35, 1.0, 20);           // the wall itself — trunks at the kill line
+      put(0.94,  14,  46, 2.0,  1.2, 20);           // second rank, overlapping the first
+      put(0.60,  52, 105, 2.6,  1.4, 36);           // canopy behind
+      put(0.20, 150, 210, 3.4,  1.7, 56);           // deep background mass
+    }
+  }
+  if(TH.camp) buildCamp(N);
+  buildLandmarks(N);
+}
+/* ================================================================
+   CAMP CRYSTAL LAKE — hand-laid, because a camp should read as a
+   place someone lived, not a scatter of props. The road runs
+   straight down the middle of it:
+     gate → cabin rows → THROUGH the dining hall → the bad cabin → out
+   ================================================================ */
+function nodeAt(frac,N){ return ((Math.floor(frac*N)%N)+N)%N; }
+function frameAt(i,N){                       // position + road normal at a node
+  const a=CENTER[i%N], b=CENTER[(i+1)%N];
+  const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
+  return {a,nx:-dy/l,ny:dx/l,dx,dy};
+}
+function buildCamp(N){
+  const R=arcRange('camp'); if(!R) return;
+  const i0=nodeAt(R.from,N), span=Math.floor((R.to-R.from)*N);
+  const put=(i,side,off,type,sc,extra)=>{
+    const f=frameAt(i,N), o=side*off;
+    const x=f.a.x+f.nx*o, y=f.a.y+f.ny*o;
+    if(x<24||x>WORLD-24||y<24||y>WORLD-24) return;
+    DECOR.push(Object.assign({x,y,type,s:sc},extra||{}));
+  };
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+
+  for(let k=0;k<span;k++){
+    const i=(i0+k)%N, u=k/span;               // u = 0..1 through the camp
+
+    // ---- treeline always behind the clearing, so the camp feels hemmed in ----
+    if(k%3===0) for(const side of [1,-1]){
+      const off=WALLR+rnd(210,380);
+      const f=frameAt(i,N), x=f.a.x+f.nx*side*off, y=f.a.y+f.ny*side*off;
+      if(x>40&&x<WORLD-40&&y>40&&y<WORLD-40&&!inLake(x,y,-22))
+        DECOR.push({x,y,type:ZONE_PROPS.woods[(Math.random()*ZONE_PROPS.woods.length)|0],s:rnd(2.4,4.0)});
+    }
+
+    if(u<0.10){                                // ---- 1. the gate ----
+      if(k%6===0) for(const side of [1,-1]) put(i,side,WALLR+rnd(30,70),'pinesquat',rnd(1.4,2.0));
+    }
+    else if(u<0.38){                           // ---- 2. cabin rows: a street ----
+      // cabins in neat facing rows, doors to the road — this is the bit that
+      // reads as "camp" more than any single prop
+      if(k%7===0){
+        const r=((k/7)|0)%3;
+        for(const side of [1,-1]){
+          put(i,side,WALLR+22,'cabin',1.7);
+          if(r===1) put(i,side,WALLR+96,'cabin',2.0);       // second row set back
+          if(r===2) put(i,side,WALLR+92,'tent',1.5);
+        }
+      }
+      if(k%13===5) put(i,(Math.random()<0.5?1:-1),WALLR+14,'campfire',1.2);
+      if(k%17===9) put(i,(Math.random()<0.5?1:-1),WALLR+60,'canoe',1.4);
+    }
+    else if(u<0.60){                           // ---- 3. THROUGH THE DINING HALL ----
+      const hu=(u-0.38)/0.22;                  // 0..1 within the hall
+      // walls pressed right up against the road on both sides
+      for(const side of [1,-1]){
+        put(i,side,WALLR+3,'hallwall',1.5);
+        if(k%4===0) put(i,side,WALLR+26,'longtable',1.3);   // trestle tables just past the posts
+      }
+      if(k%5===0) put(i,1,WALLR+1,'lantern',1.1);           // hanging lamps down one side
+      if(k%5===2) put(i,-1,WALLR+1,'lantern',1.1);
+      // doorway framing at the two ends, so entering/leaving reads clearly
+      if(hu<0.04||hu>0.96) for(const side of [1,-1]) put(i,side,WALLR+2,'halldoor',2.2);
+    }
+    else if(u<0.88){                           // ---- 4. the cabin he already visited ----
+      const au=(u-0.60)/0.28;
+      if(k%9===0){
+        for(const side of [1,-1]){
+          // first the intact row, then progressively wrecked as you go deeper
+          const wrecked = au>0.30 && Math.random()<clamp((au-0.25)*2.2,0,0.9);
+          put(i,side,WALLR+24, wrecked?'cabinwreck':'cabin', wrecked?1.8:1.7);
+        }
+      }
+      if(au>0.32){
+        if(k%3===0) put(i,(Math.random()<0.5?1:-1),WALLR+rnd(6,40),'debris',rnd(0.8,1.4));
+        if(k%11===4) put(i,(Math.random()<0.5?1:-1),WALLR+rnd(20,54),'shroud',1.2);
+        if(k%17===2) put(i,(Math.random()<0.5?1:-1),WALLR+rnd(16,44),'axestump',1.3);
+        if(k%13===6) put(i,(Math.random()<0.5?1:-1),WALLR+rnd(30,70),'canoetip',1.5);
+      }
+    }
+    else {                                     // ---- 5. back out into the trees ----
+      if(k%5===0) for(const side of [1,-1]) put(i,side,WALLR+rnd(10,60),
+        ZONE_PROPS.woods[(Math.random()*ZONE_PROPS.woods.length)|0], rnd(1.2,2.2));
+    }
+  }
+}
+/* the three signs, placed exactly — not scattered */
+function buildLandmarks(N){
+  if(!TH.landmarks) return;
+  for(const L of TH.landmarks){
+    const i=nodeAt(L.at,N), f=frameAt(i,N);
+    if(L.type==='archwelcome'){
+      // Sits on the centreline so you drive under it — and its legs have to clear
+      // the tarmac, or you slam into a post. A decor sprite's on-screen size is
+      //   size = clamp(A_DIST/depth*0.72, 4, 95) * s
+      // and screen px per world unit is BW/(2*HFOV*depth), so the depth terms
+      // cancel and the scale that makes the legs land at a given half-width is:
+      //   s = halfWidth * BW / (2*HFOV*0.92*0.72*A_DIST)
+      // Legs are drawn at ±0.92·size, so we solve for road half-width + clearance.
+      const K = BW/(2*HFOV*0.92*0.72*A_DIST);
+      DECOR.push({x:f.a.x,y:f.a.y,type:'archwelcome',s:(ROADW+18)*K});
+    } else {
+      const side=(L.type==='signlake')?-1:1;
+      DECOR.push({x:f.a.x+f.nx*side*(WALLR+30), y:f.a.y+f.ny*side*(WALLR+30), type:L.type, s:2.4});
+    }
   }
 }
 function buildSpeedwayDecor(N){
@@ -441,9 +814,28 @@ function drawSpeedStructures(){
     bctx.strokeStyle='#c8a84a'; bctx.lineWidth=1; bctx.strokeRect(T.sx-w/2, T.sy-h, w, T.p*0.6);
   }}
 }
+/* Shrinks the font until the string fits the board. Means sign text can be
+   edited freely in the track config without it ever spilling off the plank. */
+function fitText(c,txt,cx,cy,maxW,px,font){
+  let sz=px;
+  c.font=(font||'bold ')+sz.toFixed(1)+'px Georgia,serif';
+  let guard=0;
+  while(c.measureText(txt).width>maxW && sz>3 && guard++<40){
+    sz*=0.92; c.font=(font||'bold ')+sz.toFixed(1)+'px Georgia,serif';
+  }
+  c.fillText(txt,cx,cy);
+}
 function drawDecor(c,x,y,size,type){
   const s=size, G=TH.col.glow; c.save(); c.translate(x,y);
-  c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.4,s*0.1,0,0,7); c.fill();
+  if(type==='archwelcome'){
+    // road-wide sprite: one shadow ellipse scaled to it would be a black slab
+    // across the tarmac. Shadow the two posts instead.
+    c.fillStyle='rgba(0,0,0,.4)';
+    c.beginPath(); c.ellipse(-s*0.92,0,s*0.05,s*0.014,0,0,7); c.fill();
+    c.beginPath(); c.ellipse( s*0.92,0,s*0.05,s*0.014,0,0,7); c.fill();
+  } else {
+    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.4,s*0.1,0,0,7); c.fill();
+  }
   if(type==='tree'){
     c.strokeStyle='#181020'; c.lineWidth=Math.max(1,s*0.09); c.lineCap='round'; c.beginPath();
     c.moveTo(0,0); c.lineTo(0,-s*1.15); c.moveTo(0,-s*0.72); c.lineTo(-s*0.34,-s*1.02);
@@ -515,6 +907,175 @@ function drawDecor(c,x,y,size,type){
     for(let r=0;r<3;r++){ const yy=-s*0.3-r*s*0.34, ww=s*0.5-r*s*0.12;
       c.beginPath(); c.moveTo(-ww,yy); c.lineTo(ww,yy); c.lineTo(0,yy-s*0.5); c.closePath(); c.fill(); }
     c.fillStyle='#2a1a10'; c.fillRect(-s*0.05,-s*0.3,s*0.1,s*0.3);
+  } else if(type==='pinetall'){                                   // towering narrow conifer
+    c.fillStyle='#0b1c13';
+    for(let r=0;r<5;r++){ const yy=-s*0.25-r*s*0.32, ww=s*0.38-r*s*0.06;
+      c.beginPath(); c.moveTo(-ww,yy); c.lineTo(ww,yy); c.lineTo(0,yy-s*0.55); c.closePath(); c.fill(); }
+    c.fillStyle='#241610'; c.fillRect(-s*0.045,-s*0.25,s*0.09,s*0.25);
+  } else if(type==='pinesquat'){                                  // wide low fir
+    c.fillStyle='#122a1a';
+    for(let r=0;r<2;r++){ const yy=-s*0.18-r*s*0.3, ww=s*0.62-r*s*0.16;
+      c.beginPath(); c.moveTo(-ww,yy); c.lineTo(ww,yy); c.lineTo(0,yy-s*0.46); c.closePath(); c.fill(); }
+    c.fillStyle='#2a1a10'; c.fillRect(-s*0.06,-s*0.18,s*0.12,s*0.18);
+  } else if(type==='deadtree'){                                   // bare clawing branches
+    c.strokeStyle='#171208'; c.lineWidth=Math.max(1,s*0.085); c.lineCap='round';
+    c.beginPath(); c.moveTo(0,0); c.lineTo(-s*0.04,-s*1.25);
+    c.moveTo(-s*0.03,-s*0.78); c.lineTo(-s*0.42,-s*1.06);
+    c.moveTo(-s*0.02,-s*0.62); c.lineTo(s*0.38,-s*0.98);
+    c.moveTo(-s*0.035,-s*1.0); c.lineTo(s*0.26,-s*1.3);
+    c.moveTo(-s*0.04,-s*1.08); c.lineTo(-s*0.24,-s*1.4); c.stroke();
+    c.lineWidth=Math.max(1,s*0.045);
+    c.beginPath(); c.moveTo(-s*0.42,-s*1.06); c.lineTo(-s*0.56,-s*1.22);
+    c.moveTo(s*0.38,-s*0.98); c.lineTo(s*0.5,-s*1.18); c.stroke();
+  } else if(type==='twisted'){                                    // gnarled leaning trunk
+    c.strokeStyle='#1a1410'; c.lineWidth=Math.max(1,s*0.12); c.lineCap='round';
+    c.beginPath(); c.moveTo(0,0);
+    c.quadraticCurveTo(s*0.26,-s*0.5, s*0.06,-s*0.95);
+    c.stroke();
+    c.lineWidth=Math.max(1,s*0.055);
+    c.beginPath(); c.moveTo(s*0.12,-s*0.62); c.lineTo(s*0.46,-s*0.82);
+    c.moveTo(s*0.1,-s*0.8); c.lineTo(-s*0.24,-s*1.02); c.stroke();
+    c.fillStyle='#12200f'; c.beginPath(); c.ellipse(s*0.04,-s*1.02,s*0.34,s*0.2,0,0,7); c.fill();
+  } else if(type==='stump'){                                      // rotted stump
+    c.fillStyle='#1d1610'; c.beginPath();
+    c.moveTo(-s*0.2,0); c.lineTo(-s*0.17,-s*0.24); c.lineTo(s*0.17,-s*0.26); c.lineTo(s*0.2,0); c.closePath(); c.fill();
+    c.fillStyle='#2c2117'; c.beginPath(); c.ellipse(0,-s*0.25,s*0.18,s*0.06,0,0,7); c.fill();
+  } else if(type==='birch'){                                      // pale trunks — the eyes in the woods
+    for(const bx of [-s*0.2,s*0.16]){
+      c.fillStyle='#8e8a78'; c.fillRect(bx-s*0.035,-s*1.05,s*0.07,s*1.05);
+      c.fillStyle='#22201a'; for(let m=0;m<4;m++) c.fillRect(bx-s*0.035,-s*0.9+m*s*0.24,s*0.07,s*0.03);
+    }
+    c.fillStyle='#101d12'; c.beginPath(); c.ellipse(-s*0.02,-s*1.08,s*0.32,s*0.16,0,0,7); c.fill();
+  } else if(type==='reeds'){                                      // lake-edge rushes
+    c.strokeStyle='#1d3327'; c.lineWidth=Math.max(1,s*0.035);
+    for(let i=-3;i<=3;i++){ c.beginPath(); c.moveTo(i*s*0.09,0);
+      c.quadraticCurveTo(i*s*0.12,-s*0.24,i*s*0.09+ (i%2?s*0.1:-s*0.1),-s*0.42); c.stroke(); }
+  } else if(type==='canoe'){                                      // beached canoe
+    c.fillStyle='#2a1c12'; c.beginPath();
+    c.moveTo(-s*0.55,-s*0.05); c.quadraticCurveTo(0,-s*0.3,s*0.55,-s*0.05);
+    c.quadraticCurveTo(0,-s*0.02,-s*0.55,-s*0.05); c.fill();
+    c.strokeStyle='#40301f'; c.lineWidth=Math.max(1,s*0.03); c.stroke();
+  } else if(type==='boathouse'){                                  // shed at the water's edge
+    c.fillStyle='#1c1410'; c.fillRect(-s*0.55,-s*0.7,s*1.1,s*0.7);
+    c.fillStyle='#120c08'; c.beginPath(); c.moveTo(-s*0.65,-s*0.7); c.lineTo(s*0.65,-s*0.7); c.lineTo(0,-s*1.05); c.closePath(); c.fill();
+    c.fillStyle='#080604'; c.fillRect(-s*0.22,-s*0.55,s*0.44,s*0.55);   // open mouth over the water
+    c.strokeStyle='#2a1e14'; c.lineWidth=Math.max(1,s*0.05);
+    for(let i=-2;i<=2;i++){ c.beginPath(); c.moveTo(i*s*0.26,0); c.lineTo(i*s*0.26,s*0.18); c.stroke(); }
+  } else if(type==='campfire'){                                   // dead firepit, still glowing
+    c.fillStyle='#241c14'; for(let i=0;i<6;i++){ const a2=i*1.05;
+      c.beginPath(); c.arc(Math.cos(a2)*s*0.28,-s*0.02+Math.sin(a2)*s*0.09,s*0.06,0,7); c.fill(); }
+    c.strokeStyle='#2a1a10'; c.lineWidth=Math.max(1,s*0.05);
+    c.beginPath(); c.moveTo(-s*0.16,-s*0.02); c.lineTo(s*0.14,-s*0.3);
+    c.moveTo(s*0.16,-s*0.02); c.lineTo(-s*0.14,-s*0.3); c.stroke();
+    const fg=c.createRadialGradient(0,-s*0.14,1,0,-s*0.14,s*0.26);
+    fg.addColorStop(0,'rgba(255,180,90,.9)'); fg.addColorStop(.5,'rgba(200,80,30,.5)'); fg.addColorStop(1,'rgba(200,80,30,0)');
+    c.fillStyle=fg; c.beginPath(); c.arc(0,-s*0.14,s*0.26,0,7); c.fill();
+  } else if(type==='tent'){                                       // sagging canvas tent
+    c.fillStyle='#2a2a20'; c.beginPath();
+    c.moveTo(-s*0.42,0); c.lineTo(0,-s*0.6); c.lineTo(s*0.42,0); c.closePath(); c.fill();
+    c.fillStyle='#141410'; c.beginPath();
+    c.moveTo(-s*0.1,0); c.lineTo(0,-s*0.42); c.lineTo(s*0.1,0); c.closePath(); c.fill();
+  } else if(type==='archway'){                                    // CAMP entrance arch
+    c.strokeStyle='#241a10'; c.lineWidth=Math.max(1,s*0.09);
+    c.beginPath(); c.moveTo(-s*0.6,0); c.lineTo(-s*0.6,-s*0.9);
+    c.moveTo(s*0.6,0); c.lineTo(s*0.6,-s*0.9); c.stroke();
+    c.fillStyle='#1a1208'; c.fillRect(-s*0.72,-s*1.05,s*1.44,s*0.24);
+    c.fillStyle='rgba('+G+',.75)';
+    for(let i=0;i<5;i++) c.fillRect(-s*0.56+i*s*0.24,-s*0.99,s*0.14,s*0.12);
+  } else if(type==='archwelcome'){                                // the sign over the start line
+    const T=(TH.signs&&TH.signs.welcome)||['WELCOME TO','CAMP CRYSTAL LAKE'];
+    // Proportions are deliberately squat: s is now keyed to the road's half-width,
+    // so anything near the old 0.86·s height would tower absurdly over the karts.
+    c.strokeStyle='#241a10'; c.lineWidth=Math.max(1,s*0.028);     // posts, clear of the tarmac
+    c.beginPath(); c.moveTo(-s*0.92,0); c.lineTo(-s*0.92,-s*0.30);
+    c.moveTo(s*0.92,0); c.lineTo(s*0.92,-s*0.30); c.stroke();
+    c.fillStyle='#2e2113'; c.fillRect(-s*1.0,-s*0.45,s*2.0,s*0.155);      // the board
+    c.strokeStyle='#160f08'; c.lineWidth=Math.max(1,s*0.008); c.strokeRect(-s*1.0,-s*0.45,s*2.0,s*0.155);
+    c.fillStyle='rgba(20,14,8,.45)';                                       // plank seam
+    c.fillRect(-s*1.0,-s*0.372,s*2.0,s*0.005);
+    if(s*0.155>7){                                                 // text only when the board is tall enough to read
+      c.fillStyle='#d8c48a'; c.textAlign='center'; c.textBaseline='middle';
+      fitText(c,T[0],0,-s*0.412,s*1.84,s*0.055);
+      fitText(c,T[1],0,-s*0.336,s*1.84,s*0.072);
+    }
+    c.fillStyle='rgba('+G+',.5)';                                  // lamp either end
+    c.beginPath(); c.arc(-s*0.94,-s*0.47,s*0.018,0,7); c.arc(s*0.94,-s*0.47,s*0.018,0,7); c.fill();
+  } else if(type==='signlake'||type==='signcamp'){                 // the two roadside boards
+    const T=(TH.signs&&TH.signs[type==='signlake'?'lake':'camp'])||['',''];
+    c.strokeStyle='#241a10'; c.lineWidth=Math.max(1,s*0.08);
+    c.beginPath(); c.moveTo(-s*0.06,0); c.lineTo(-s*0.06,-s*0.62);
+    c.moveTo(s*0.06,0); c.lineTo(s*0.06,-s*0.62); c.stroke();
+    c.fillStyle='#2b2016'; c.fillRect(-s*0.78,-s*1.16,s*1.56,s*0.56);
+    c.strokeStyle='#150e07'; c.lineWidth=Math.max(1,s*0.03); c.strokeRect(-s*0.78,-s*1.16,s*1.56,s*0.56);
+    if(s>16){
+      c.fillStyle='#cbb884'; c.textAlign='center'; c.textBaseline='middle';
+      fitText(c,T[0],0,-s*0.98,s*1.42,s*0.155);
+      c.fillStyle='#8d7c58';
+      fitText(c,T[1],0,-s*0.76,s*1.42,s*0.105,'');
+    }
+  } else if(type==='hallwall'){                                    // dining hall wall + post
+    c.fillStyle='#241a12'; c.fillRect(-s*0.3,-s*1.05,s*0.6,s*1.05);
+    c.fillStyle='#181109'; c.fillRect(-s*0.3,-s*1.05,s*0.6,s*0.1);  // top plate
+    c.fillStyle='rgba(60,44,28,.55)';                               // board lines
+    for(let i=0;i<4;i++) c.fillRect(-s*0.3,-s*0.9+i*s*0.22,s*0.6,s*0.02);
+    c.fillStyle='#0d0906'; c.fillRect(-s*0.16,-s*0.72,s*0.32,s*0.3); // dark window
+    c.fillStyle='rgba(255,170,60,.18)'; c.fillRect(-s*0.16,-s*0.72,s*0.32,s*0.3);
+  } else if(type==='halldoor'){                                     // doorway frame at each end
+    c.fillStyle='#2c2014'; c.fillRect(-s*0.24,-s*1.3,s*0.2,s*1.3);
+    c.fillStyle='#1a1209'; c.fillRect(-s*0.3,-s*1.42,s*0.6,s*0.16);
+    c.fillStyle='rgba(255,170,60,.22)'; c.fillRect(-s*0.04,-s*1.24,s*0.06,s*1.24);
+  } else if(type==='longtable'){                                    // trestle table + benches
+    c.fillStyle='#3a2b1a'; c.fillRect(-s*0.5,-s*0.32,s*1.0,s*0.08);
+    c.strokeStyle='#2a1e12'; c.lineWidth=Math.max(1,s*0.04);
+    c.beginPath(); c.moveTo(-s*0.38,-s*0.24); c.lineTo(-s*0.38,0);
+    c.moveTo(s*0.38,-s*0.24); c.lineTo(s*0.38,0); c.stroke();
+    c.fillStyle='#33261a'; c.fillRect(-s*0.55,-s*0.16,s*1.1,s*0.05);
+  } else if(type==='lantern'){                                      // hanging lamp
+    c.strokeStyle='#20180f'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(0,-s*1.3); c.lineTo(0,-s*1.0); c.stroke();
+    c.fillStyle='#2a2018'; c.fillRect(-s*0.09,-s*1.02,s*0.18,s*0.18);
+    const lg=c.createRadialGradient(0,-s*0.93,1,0,-s*0.93,s*0.34);
+    lg.addColorStop(0,'rgba(255,196,110,.85)'); lg.addColorStop(1,'rgba(255,160,60,0)');
+    c.fillStyle=lg; c.beginPath(); c.arc(0,-s*0.93,s*0.34,0,7); c.fill();
+  } else if(type==='cabinwreck'){                                   // he was here
+    c.fillStyle='#1d1410'; c.beginPath();                           // caved-in walls
+    c.moveTo(-s*0.5,0); c.lineTo(-s*0.46,-s*0.5); c.lineTo(-s*0.1,-s*0.42);
+    c.lineTo(s*0.16,-s*0.56); c.lineTo(s*0.5,-s*0.46); c.lineTo(s*0.5,0); c.closePath(); c.fill();
+    c.fillStyle='#120c08'; c.beginPath();                           // collapsed roof, one side dropped
+    c.moveTo(-s*0.58,-s*0.5); c.lineTo(s*0.2,-s*0.6); c.lineTo(-s*0.06,-s*0.92); c.closePath(); c.fill();
+    c.strokeStyle='#3a2a1c'; c.lineWidth=Math.max(1,s*0.04);        // broken beams jutting out
+    c.beginPath(); c.moveTo(s*0.2,-s*0.6); c.lineTo(s*0.56,-s*0.78);
+    c.moveTo(-s*0.06,-s*0.92); c.lineTo(-s*0.3,-s*1.02); c.stroke();
+    c.fillStyle='#000'; c.fillRect(-s*0.2,-s*0.4,s*0.26,s*0.4);     // the doorway, open, dark
+    c.fillStyle='rgba(150,20,20,.5)';                               // something dragged out of it
+    c.beginPath(); c.ellipse(s*0.06,-s*0.04,s*0.22,s*0.05,0,0,7); c.fill();
+  } else if(type==='debris'){                                       // splintered planks and gear
+    c.strokeStyle='#3a2a1c'; c.lineWidth=Math.max(1,s*0.06);
+    for(let i=0;i<3;i++){ const a2=Math.random()*3;
+      c.beginPath(); c.moveTo(-Math.cos(a2)*s*0.3,-Math.sin(a2)*s*0.06);
+      c.lineTo(Math.cos(a2)*s*0.3,-Math.sin(a2)*s*0.12); c.stroke(); }
+    c.fillStyle='#2a2218'; c.fillRect(-s*0.1,-s*0.14,s*0.2,s*0.14);
+  } else if(type==='shroud'){                                       // a sheet pulled over something
+    c.fillStyle='#8d8778'; c.beginPath();
+    c.moveTo(-s*0.42,0); c.quadraticCurveTo(-s*0.34,-s*0.24,-s*0.06,-s*0.26);
+    c.quadraticCurveTo(s*0.3,-s*0.28,s*0.44,0); c.closePath(); c.fill();
+    c.fillStyle='#6f6a5d'; c.beginPath();                            // fold shadow
+    c.moveTo(-s*0.1,-s*0.26); c.quadraticCurveTo(s*0.06,-s*0.14,s*0.16,0); c.lineTo(-s*0.02,0); c.closePath(); c.fill();
+    c.fillStyle='rgba(120,18,18,.55)'; c.beginPath();                // stain at one end
+    c.ellipse(s*0.3,-s*0.03,s*0.11,s*0.04,0,0,7); c.fill();
+  } else if(type==='axestump'){                                      // blade left in the block
+    c.fillStyle='#1d1610'; c.beginPath();
+    c.moveTo(-s*0.2,0); c.lineTo(-s*0.17,-s*0.26); c.lineTo(s*0.17,-s*0.28); c.lineTo(s*0.2,0); c.closePath(); c.fill();
+    c.fillStyle='#2c2117'; c.beginPath(); c.ellipse(0,-s*0.27,s*0.18,s*0.06,0,0,7); c.fill();
+    c.strokeStyle='#3a2a1a'; c.lineWidth=Math.max(1,s*0.05);
+    c.beginPath(); c.moveTo(s*0.02,-s*0.3); c.lineTo(s*0.16,-s*0.66); c.stroke();
+    c.fillStyle='#8d8272'; c.beginPath();
+    c.moveTo(s*0.12,-s*0.6); c.lineTo(s*0.3,-s*0.7); c.lineTo(s*0.22,-s*0.5); c.closePath(); c.fill();
+  } else if(type==='canoetip'){                                      // capsized, half in the mud
+    c.fillStyle='#241a12'; c.beginPath();
+    c.moveTo(-s*0.5,0); c.quadraticCurveTo(0,-s*0.42,s*0.5,0); c.closePath(); c.fill();
+    c.fillStyle='#150f0a'; c.beginPath();
+    c.moveTo(-s*0.36,0); c.quadraticCurveTo(0,-s*0.26,s*0.36,0); c.closePath(); c.fill();
   } else if(type==='cabin'){                                      // camp cabin
     c.fillStyle='#241812'; c.fillRect(-s*0.5,-s*0.6,s*1.0,s*0.6);
     c.fillStyle='#160f0a'; c.beginPath(); c.moveTo(-s*0.58,-s*0.6); c.lineTo(s*0.58,-s*0.6); c.lineTo(0,-s*1.0); c.closePath(); c.fill();
@@ -579,6 +1140,69 @@ function drawZombie(c,x,y,size){ const s=size; c.save(); c.translate(x,y);
   c.fillStyle='#2a3a15'; c.fillRect(-s*0.09,-s*0.85,s*0.05,s*0.05); c.fillRect(s*0.04,-s*0.85,s*0.05,s*0.05);
   c.restore(); }
 
+/* ---- THE DROWNED: the lake's resident. Appears without warning, kills on
+   contact, then he's gone — and somewhere else. Original figure, not a
+   licensed one: sackcloth hood, lake-rotted, drags a rusted blade.        ---- */
+let STALK=null;
+function buildStalker(){
+  STALK = TH.stalker ? {on:false,x:0,y:0,node:0,t:6+Math.random()*9,life:0,anim:0,fade:0} : null;
+}
+function spawnStalker(){
+  const N=CENTER.length;
+  // put him on the road ahead of the player — far enough to be seen, close enough to matter
+  let node=(player.node + 100 + ((Math.random()*150)|0))%N;
+  let guard=0;
+  while(zoneAt(node/N)==='dock' && guard++<50) node=(node+37)%N;   // he doesn't stand on open water
+  const a=CENTER[node], b=CENTER[(node+1)%N];
+  const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
+  const off=(Math.random()*2-1)*(ROADW*0.6);
+  STALK.x=a.x+nx*off; STALK.y=a.y+ny*off; STALK.node=node;
+  STALK.on=true; STALK.life=3.4+Math.random()*3.2; STALK.fade=0;
+  // a low sting so it's a scare, not a cheap shot
+  if(soundOn) beep(58,.45);
+}
+function updateStalker(dt){
+  if(!STALK) return;
+  STALK.anim+=dt;
+  if(!STALK.on){ STALK.t-=dt; if(STALK.t<=0) spawnStalker(); return; }
+  STALK.fade=Math.min(1,STALK.fade+dt*3.5);
+  STALK.life-=dt;
+  if(STALK.life<=0){ STALK.on=false; STALK.t=8+Math.random()*11; return; }   // he moves on
+  for(const k of [player,...rivals]){
+    if(k.dead>0||k.inv>0) continue;
+    if(Math.hypot(k.x-STALK.x,k.y-STALK.y)<27){
+      damageKart(k,999,null);                                   // contact is fatal, full stop
+      EXPL.push({x:STALK.x,y:STALK.y,life:0.5,r:1.3});
+      if(k.isPlayer){ addShake(34); flashMsg('HE FOUND YOU'); }
+      STALK.on=false; STALK.t=10+Math.random()*12;               // vanishes, resurfaces elsewhere
+      break;
+    }
+  }
+}
+function drawStalker(c,x,y,size,alpha){
+  const s=size; c.save(); c.translate(x,y); c.globalAlpha=alpha;
+  c.fillStyle='rgba(0,0,0,.45)'; c.beginPath(); c.ellipse(0,0,s*0.34,s*0.09,0,0,7); c.fill();
+  // heavy body, shoulders squared — reads as a big man even at low resolution
+  c.fillStyle='#1c2320'; c.beginPath();
+  c.moveTo(-s*0.24,0); c.lineTo(-s*0.26,-s*0.62); c.lineTo(-s*0.16,-s*0.74);
+  c.lineTo(s*0.16,-s*0.74); c.lineTo(s*0.26,-s*0.62); c.lineTo(s*0.24,0); c.closePath(); c.fill();
+  // arms, one hanging low with the blade
+  c.strokeStyle='#1c2320'; c.lineWidth=Math.max(1,s*0.11); c.lineCap='round';
+  c.beginPath(); c.moveTo(-s*0.22,-s*0.6); c.lineTo(-s*0.34,-s*0.2);
+  c.moveTo(s*0.22,-s*0.6); c.lineTo(s*0.36,-s*0.16); c.stroke();
+  // rusted blade
+  c.strokeStyle='#7d6a55'; c.lineWidth=Math.max(1,s*0.05);
+  c.beginPath(); c.moveTo(s*0.36,-s*0.16); c.lineTo(s*0.44,s*0.24); c.stroke();
+  // sackcloth hood
+  c.fillStyle='#6d6450'; c.beginPath(); c.ellipse(0,-s*0.88,s*0.17,s*0.2,0,0,7); c.fill();
+  c.fillStyle='#554d3c'; c.beginPath();
+  c.moveTo(-s*0.17,-s*0.78); c.lineTo(s*0.17,-s*0.78); c.lineTo(s*0.1,-s*0.68); c.lineTo(-s*0.1,-s*0.68); c.closePath(); c.fill();
+  // two dark eyeholes — the only detail that matters
+  c.fillStyle='#050505';
+  c.fillRect(-s*0.1,-s*0.94,s*0.06,s*0.05); c.fillRect(s*0.04,-s*0.94,s*0.06,s*0.05);
+  c.restore();
+}
+
 function buildCheckpoints(){
   CKPTS=[];
   for(let k=0;k<NCP;k++){
@@ -626,9 +1250,17 @@ function placeGrid(){
 }
 
 /* ---- physics tuning ---- */
-const MAXS=270, MAXS_OFF=95, ACCEL=190, BRAKE=250, TURN=2.05, STEER_EASE=8;
-const GRIP=5.0;      // rear grip on road — lower = slidier. THE drift knob.
-const AI_SPEED=0.69; // AI top-speed handicap so the player can run them down
+const MAXS=270, MAXS_OFF=95, ACCEL=190, BRAKE=250, TURN=2.18, STEER_EASE=8;
+/* Speed is displayed in MPH. The world-unit scale is deliberately unchanged:
+   the drivable corner-radius limits documented up top were measured against
+   MAXS=270, so raising the actual number would invalidate them and could make
+   tracks undrivable. Instead the conversion is derived so the readout is right. */
+const MPH = 125/MAXS;                        // units/s → MPH: top speed reads exactly 125
+const BOOST_CAP = Math.round(175/MPH - MAXS);// nitrous ceiling → reads exactly 175
+const GRIP=3.4;      // rear grip on road — lower = slidier. THE drift knob.
+const GRIP_FADE=0.38;// how much grip the rear loses at full speed → oversteer builds with pace
+const AI_SPEED=1.00; // rivals top out at the same 125; the rubber band does the rest
+const AI_FIRE_DELAY=10;   // seconds of clean racing before the AI is allowed to shoot
 const GRIP_OFF=1.1;  // grip off-track (loose, slidey)
 const COAST=1.2;     // rolling decel when off the gas
 const SLIDE_MIN=52, MT1=0.34, MT2=0.82;    // slide threshold (used for drift feedback + meter fill)
@@ -665,6 +1297,17 @@ function fullNearest(k){
 function wallClamp(k){
   const c=CENTER[k.node];
   const dx=k.x-c.x, dy=k.y-c.y, dr=Math.hypot(dx,dy);
+  // On wooded circuits the wall IS the treeline — reaching it means you met a trunk.
+  // The dirt shoulder between tarmac and trees is your margin; run out of it and you're done.
+  // Requires real impact speed, so a slow scrape or a start-line shove just scuffs the bark.
+  if(TH.killtrees && dr>WALLR-2 && k.dead<=0 && k.inv<=0 && k.ground>60){
+    const z=zoneAt(k.node/CENTER.length);
+    if(z==='woods'||z==='camp'){
+      damageKart(k,999,null);
+      EXPL.push({x:k.x,y:k.y,life:0.45,r:1.1});
+      if(k.isPlayer){ addShake(30); flashMsg('INTO THE TREES'); }
+    }
+  }
   if(dr>WALLR){
     const nx=dx/dr, ny=dy/dr;
     k.x=c.x+nx*WALLR; k.y=c.y+ny*WALLR;
@@ -691,8 +1334,19 @@ function updateKart(k,dt,input){
   const c0=CENTER[k.node];
   const troad=Math.hypot(k.x-c0.x, k.y-c0.y);
   const road = troad < ROADW+12;            // geometric on-tarmac test — no pixel flicker
+  // off the deck on the dock section = you're in the lake
+  // the deck is painted at ROADW+4, so death is keyed to that edge rather than the
+  // looser off-road threshold — you die where the planks visibly end
+  const inWater = TH.water && troad > ROADW+6 && zoneAt(k.node/CENTER.length)==='dock';
+  if(inWater && k.dead<=0 && k.inv<=0){
+    // leave the deck and the lake takes you — no recovery
+    k.vx*=0.15; k.vy*=0.15;
+    damageKart(k,999,null);
+    EXPL.push({x:k.x,y:k.y,life:0.5,r:1.0});
+    if(k.isPlayer){ addShake(26); flashMsg('INTO THE LAKE'); }
+  }
   let cap=(road?MAXS:MAXS_OFF)*(k.rubber||1)*(k.isPlayer?1:AI_SPEED*aiComp);
-  if(k.boost>0) cap += 95;                   // mini-turbo raises the ceiling
+  if(k.boost>0) cap += BOOST_CAP;            // nitrous raises the ceiling to 175 MPH
 
   // ── decompose current velocity into forward + sideways (relative to heading) ──
   let fwd = k.vx*fx + k.vy*fy;
@@ -722,8 +1376,11 @@ function updateKart(k,dt,input){
   }
 
   // ── rear grip: bleed off sideways velocity. Partial grip = the kart slides. ──
+  // Real oversteer builds with pace — grip fades as speed rises, so the same
+  // input that tucks in neatly at 60 will step the back end out at 120.
   let g = road?GRIP:GRIP_OFF;
-  if(k.drift>0){ g*=0.45; k.drift-=dt; }     // hop flick → temporary slide
+  if(road){ const sf=Math.min(1,Math.abs(fwd)/MAXS); g *= (1 - GRIP_FADE*sf); }
+  if(k.drift>0){ g*=0.38; k.drift-=dt; }     // hop flick → temporary slide
   lat *= Math.exp(-g*dt);
 
   // ── recombine into world velocity (using THIS frame's heading) ──
@@ -856,6 +1513,17 @@ function render(){
     const sxp=BW/2+(lat/(depth*HFOV))*(BW/2); if(sxp<-40||sxp>BW+40) continue;
     sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.42,4,52), depth, kind:'zomb'});
   }
+  if(STALK&&STALK.on){
+    const relx=STALK.x-camx, rely=STALK.y-camy, depth=relx*cf+rely*sf;
+    if(depth>10&&depth<1100){
+      const lat=relx*rx+rely*ry, p=A_DIST/depth;
+      if(p>=1&&p<=BH-HORIZON+60){
+        const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
+        if(sxp>=-40&&sxp<=BW+40)
+          sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.62,5,78), depth, kind:'stalk', alpha:STALK.fade});
+      }
+    }
+  }
   for(const o of DECOR){
     const relx=o.x-camx, rely=o.y-camy, depth=relx*cf+rely*sf;
     if(depth<12||depth>1250) continue;
@@ -863,7 +1531,9 @@ function render(){
     if(p<1||p>BH-HORIZON+70) continue;
     const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
     if(sxp<-50||sxp>BW+50) continue;
-    sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.72,4,95)*o.s, deco:o.type, depth});
+    const dsz=clamp(p*0.72,4,95)*o.s;
+    if(dsz<4.5) continue;              // sub-pixel at distance — invisible, so don't pay for it
+    sprites.push({sx:sxp, sy:HORIZON+p, size:dsz, deco:o.type, depth});
   }
   for(const pr of PROJ){ const relx=pr.x-camx,rely=pr.y-camy,depth=relx*cf+rely*sf; if(depth<8||depth>1300)continue;
     const lat=relx*rx+rely*ry,pp=A_DIST/depth; if(pp<1)continue; const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
@@ -877,6 +1547,7 @@ function render(){
     else if(s.kind==='expl') drawExpl(bctx,s.sx,s.sy,s.size);
     else if(s.kind==='tobj') drawTrackObj(bctx,s.sx,s.sy,s.size,s.ttype);
     else if(s.kind==='zomb') drawZombie(bctx,s.sx,s.sy,s.size);
+    else if(s.kind==='stalk') drawStalker(bctx,s.sx,s.sy,s.size,s.alpha);
     else if(s.deco) drawDecor(bctx,s.sx,s.sy,s.size,s.deco);
     else if(s.dead) drawExpl(bctx,s.sx,s.sy,s.size*0.9);
     else drawKartSprite(bctx,s.sx,s.sy,s.size,s.k.char,0);
@@ -1033,7 +1704,7 @@ const MENUS={
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
   howto:{ kick:'', title:'HOW TO PLAY',
-    body:'<b>↑</b> gas &nbsp; <b>↓</b> brake &nbsp; <b>← →</b> steer &nbsp; <b>SPACE</b> drift-hop &nbsp; <b>SHIFT</b> turbo &nbsp; <b>F</b> fire<br><br>Grab glowing <b>?</b> boxes for power-ups: rapid-fire, spread shot, shield, or instant nitro. Hit gold <b>ramps</b> at speed to launch over trouble. Dodge the <b>spikes</b> — they wreck you.<br><br>Everyone fights everyone. Leaders ease up so you can reel them in — but slack off and the dead will bury you.<br><br>Single Race is one 3-lap sprint. Tournament is a 4-race cup — points by finish, highest total is champion.',
+    body:'<b>↑</b> gas &nbsp; <b>↓</b> brake &nbsp; <b>← →</b> steer &nbsp; <b>SPACE</b> drift-hop &nbsp; <b>SHIFT</b> turbo &nbsp; <b>F</b> fire<br><br>Grab glowing <b>?</b> boxes for power-ups: rapid-fire, spread shot, shield, or instant nitro. Hit gold <b>ramps</b> at speed to launch over trouble. Dodge the <b>spikes</b> — they wreck you.<br><br>Everyone fights everyone. Weapons stay holstered for the first 10 seconds — the start is decided by driving. Fall behind and the pack leans on it to hunt you down; get in front and they will not let you rest.<br><br>Top speed is 125 MPH. Nitrous takes you to 175. The faster you go the looser the back end gets, so learn to catch the slide.<br><br>Single Race is one 3-lap sprint. Tournament is a 4-race cup — points by finish, highest total is champion.',
     items:[ {label:'◀ BACK', act:()=>openMenu('main')} ]},
   options:{ kick:'', title:'OPTIONS', items:[
     {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
@@ -1097,7 +1768,7 @@ function renderTrackSel(){ const t=TRACKS[selTrack];
 }
 function trkMove(d){ selTrack=(selTrack+d+TRACKS.length)%TRACKS.length; renderTrackSel(); beep(560,.05); }
 function confirmTrack(){ beep(880,.1);
-  applyTheme(selTrack); buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies();
+  applyTheme(selTrack); buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker();
   document.getElementById('trackselect').classList.remove('show'); openCharSelect();
 }
 function chooseMode2(){}
@@ -1142,7 +1813,7 @@ function startRace(){
   const pc = selectedChar || {...CHARS[0]};
   player=makeKart(pc,true);
   rivals=CHARS.filter((c,i)=>i!==selIdx).map(c=>makeKart(c,false));
-  placeGrid(); buildTrackObjects(); buildZombies();
+  placeGrid(); buildTrackObjects(); buildZombies(); buildStalker();
   closeMenu(); hide('scFinish'); document.getElementById('charselect').classList.remove('show');
   PROJ=[]; EXPL=[];
   state='countdown'; countdown(3);
@@ -1206,7 +1877,7 @@ function finish(){
   placeGrid();
   PROJ=[]; EXPL=[];
   [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0; });
-  buildTrackObjects(); buildZombies();
+  buildTrackObjects(); buildZombies(); buildStalker();
 }
 
 /* ================================================================
@@ -1221,27 +1892,42 @@ function loop(now){
     updateKart(player,dt,{gas:keys.up||touchGas, brake:keys.down||touchBrake, steer:clamp(steer,-1,1), hop:keys.hop, boost:keys.boost});
     keys.hop=false;
     for(const r of rivals){ const gap=player.progress-r.progress;
-      r.rubber = gap>=0 ? clamp(1+gap*0.010, 1, 1.06)   // behind you → mild press
-                        : clamp(1+gap*0.036, 0.74, 1); } // ahead of you → eases up so you can reel them in
+      // Behind you they lean on it hard so they can close up and apply pressure;
+      // ahead of you they only ease off a little, so a lead still has to be earned.
+      r.rubber = gap>=0 ? clamp(1+gap*0.020, 1, 1.10)    // behind you → real chase
+                        : clamp(1+gap*0.030, 0.90, 1); } // ahead of you → slight ease
     for(const r of rivals) updateKart(r,dt,aiInput(r));
     if(keys.fire||touchFire) fireWeapon(player);
     for(const r of rivals) aiMaybeFire(r);
     updateCombat(dt);
     updateTrackObjects(dt);
     updateZombies(dt);
+    updateStalker(dt);
     kartCollisions();
     updateProgress(player,now);
     if(state==='race') for(const r of rivals) updateProgress(r,now);
+    // ---- sense of speed: the frame starts to rattle once you're really moving.
+    // Nothing below ~45% of top, then it ramps quadratically so the last third
+    // of the speed range is where it really bites.
+    if(player.dead<=0){
+      const sf=clamp(player.ground/MAXS,0,1.45);
+      let amt=Math.pow(Math.max(0,sf-0.45)/0.55,2)*5.2;
+      if(player.boost>0) amt+=3.4;                 // nitrous slams it
+      if(amt>0.4) addShake(Math.min(amt,9));
+    }
     // place
     const place=1+rivals.filter(r=>r.progress>player.progress).length;
     document.getElementById('hPos').innerHTML=place+'<small>PLACE</small>';
-    aiComp = place===1 ? 1.15 : place<=3 ? 1.05 : 1;   // top-3 → +5%, leading → +15% so the front is a real fight
+    // Rivals now run the same 125 car as you, so this multiplier has to be far
+    // gentler than it was — at the old +15% a leading player could never break
+    // away, because the pack would out-run them on raw top speed alone.
+    aiComp = place===1 ? 1.06 : place<=3 ? 1.02 : 1;
     const tb=document.getElementById('turbo'); document.getElementById('turboFill').style.width=(player.meter*100).toFixed(0)+'%';
     tb.classList.toggle('full', player.meter>=0.995); tb.classList.toggle('boosting', player.boost>0);
     tb.classList.toggle('cooling', player.cool>0);
     document.getElementById('hpFill').style.width=Math.max(0,player.hp/MAXHP*100)+'%';
     document.getElementById('hLap').textContent=Math.min(player.lap+1,LAPS)+'/'+LAPS;
-    document.getElementById('hSpd').textContent=Math.round(player.ground*0.36);
+    document.getElementById('hSpd').textContent=Math.round(player.ground*MPH);
     document.getElementById('hTime').textContent=fmt((now-raceStart)/1000);
     const _hc=CENTER[player.node]; const _off=Math.hypot(player.x-_hc.x,player.y-_hc.y)>ROADW+12;
     document.getElementById('hCP').textContent = _off?'⚠ OFF TRACK':'';
@@ -1343,6 +2029,9 @@ function updateCombat(dt){
 }
 function aiMaybeFire(r){
   if(r.dead>0||r.fireCd>0) return;
+  // Opening laps are clean racing — no shots for the first stretch, so the
+  // start is decided by driving rather than by whoever got a lucky angle.
+  if(raceStart && (performance.now()-raceStart)/1000 < AI_FIRE_DELAY) return;
   let best=null, bd=460;
   for(const t of [player,...rivals]){
     if(t===r||t.dead>0||t.inv>0) continue;
@@ -1351,7 +2040,14 @@ function aiMaybeFire(r){
     let diff=Math.atan2(dy,dx)-r.ang; while(diff>Math.PI)diff-=2*Math.PI; while(diff<-Math.PI)diff+=2*Math.PI;
     if(Math.abs(diff)<0.24){ bd=d; best=t; }
   }
-  if(best) fireWeapon(r);
+  if(!best) return;
+  // Sitting right on your bumper and unloading is the cheapest thing they can do.
+  // Up close they mostly hold fire; the chance ramps back up with distance.
+  if(best.isPlayer && bd<220){
+    const openness=bd/220;                     // 0 = point blank, 1 = at the edge
+    if(Math.random() > 0.12+openness*0.88) return;   // reaches 100% exactly at 220 — no step
+  }
+  fireWeapon(r);
 }
 function flashMsg(txt){ const el=document.getElementById('lapflash'); el.textContent=txt;
   el.animate([{opacity:0,transform:'translateX(-50%) scale(.7)'},{opacity:1,transform:'translateX(-50%) scale(1.05)'},{opacity:0,transform:'translateX(-50%) scale(1.15)'}],{duration:1300}); }
@@ -1364,7 +2060,13 @@ function drawExpl(c,x,y,s){ s=clamp(s,4,80); c.save(); c.translate(x,y);
   c.fillStyle=g; c.beginPath(); c.arc(0,0,s,0,7); c.fill(); c.restore(); }
 
 function kartCollisions(){
-  const all=[player,...rivals], HIT=24, REST=0.75;
+  // A kart sprite is ~4 world units wide (size/pxPerUnit works out constant with
+  // depth). HIT is centre-to-centre, so 24 meant you bounced off contact you
+  // couldn't see — 6x the visible body. 10 keeps a little forgiveness so
+  // billboards don't visibly interpenetrate, while opening the road up for
+  // side-by-side passing. Relative closing speed between racers going the same
+  // way is low, so this is still well clear of tunnelling at the dt cap.
+  const all=[player,...rivals], HIT=10, REST=0.45;
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j], dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
     if(a.dead>0||b.dead>0) continue;
@@ -1380,8 +2082,8 @@ function kartCollisions(){
         a.vx-=nx*jImp; a.vy-=ny*jImp;
         b.vx+=nx*jImp; b.vy+=ny*jImp;
       }
-      // small guaranteed knock so even gentle taps push apart
-      a.vx-=nx*22; a.vy-=ny*22; b.vx+=nx*22; b.vy+=ny*22;
+      // light guaranteed knock — enough to unstick, not enough to launch you
+      a.vx-=nx*7; a.vy-=ny*7; b.vx+=nx*7; b.vy+=ny*7;
       if(a.isPlayer||b.isPlayer) beep(120,.05);
     }
   }
@@ -1461,28 +2163,113 @@ function engineStart(){ try{ if(!actx)actx=new(window.AudioContext||window.webki
   const a1=actx.createOscillator(),a2=actx.createOscillator(),ag=actx.createGain();
   a1.type='triangle'; a2.type='sine'; a1.frequency.value=TH.amb[0]; a2.frequency.value=TH.amb[1];
   ag.gain.value=soundOn?0.02:0; a1.connect(ag);a2.connect(ag);ag.connect(actx.destination); a1.start();a2.start();
-  // crowd ambience — a loop of filtered noise = distant murmur of the stands
-  const nb=actx.createBuffer(1, actx.sampleRate*2, actx.sampleRate), nd=nb.getChannelData(0);
-  for(let i=0;i<nd.length;i++) nd[i]=(Math.random()*2-1)*0.6;
+  // ---- ambience bed ----------------------------------------------------
+  // A single bandpass on white noise reads as static, not people. A crowd is
+  // pink-ish noise through vocal formants, breathing in slow swells. The woods
+  // are the same trick with different bands: high shimmer instead of chest tone.
+  const woods = TH.ambience==='woods';
+  const LEN=4, nb=actx.createBuffer(1, actx.sampleRate*LEN, actx.sampleRate), nd=nb.getChannelData(0);
+  let b0=0,b1=0,b2=0;
+  for(let i=0;i<nd.length;i++){                       // pink noise (Paul Kellet approximation)
+    const w=Math.random()*2-1;
+    b0=0.99765*b0+w*0.0990460; b1=0.96300*b1+w*0.2965164; b2=0.57000*b2+w*1.0526913;
+    nd[i]=(b0+b1+b2+w*0.1848)*0.22;
+  }
   const noise=actx.createBufferSource(); noise.buffer=nb; noise.loop=true;
-  const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=650; bp.Q.value=0.7;
-  const cg=actx.createGain(); cg.gain.value=soundOn?0.055:0;
-  noise.connect(bp); bp.connect(cg); cg.connect(actx.destination); noise.start();
-  eng={o,o2,g,f,a1,a2,ag,noise,cg,bp}; }catch(e){} }
-function crowdCheer(type){ if(!eng||!soundOn||!actx) return; try{ const now=actx.currentTime, base=0.055;
-  eng.cg.gain.cancelScheduledValues(now); eng.bp.frequency.cancelScheduledValues(now);
+  const cg=actx.createGain(); cg.gain.value=soundOn?(woods?0.05:0.055):0;
+  // three parallel formant bands = the sound of many voices / many insects
+  const bands=(woods?[[2600,5,0.5],[4800,7,0.34],[1300,3,0.2]]
+                    :[[480,2.2,0.55],[1150,2.6,0.4],[2400,3.2,0.22]]).map(([hz,q,gv])=>{
+    const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=hz; bp.Q.value=q;
+    const bg=actx.createGain(); bg.gain.value=gv;
+    noise.connect(bp); bp.connect(bg); bg.connect(cg);
+    // each band drifts on its own slow LFO so the bed never sits still
+    const lfo=actx.createOscillator(), ld=actx.createGain();
+    lfo.frequency.value=0.07+Math.random()*0.16; ld.gain.value=gv*0.45;
+    lfo.connect(ld); ld.connect(bg.gain); lfo.start();
+    return {bp,bg,lfo};
+  });
+  const bp=bands[0].bp;                                // kept for the reaction sweeps
+  cg.connect(actx.destination); noise.start();
+  eng={o,o2,g,f,a1,a2,ag,noise,cg,bp,bands,woods}; }catch(e){} }
+function crowdCheer(type){ if(!eng||!soundOn||!actx) return; try{
+  const now=actx.currentTime, woods=eng.woods, base=woods?0.05:0.055;
+  eng.cg.gain.cancelScheduledValues(now);
+  if(woods){
+    // No grandstand out here. The woods react instead: everything goes quiet,
+    // then something answers from the treeline.
+    eng.cg.gain.setValueAtTime(eng.cg.gain.value,now);
+    eng.cg.gain.linearRampToValueAtTime(base*0.15,now+0.18);      // insects cut out
+    eng.cg.gain.linearRampToValueAtTime(base,now+(type==='gasp'?2.6:1.8));
+    if(type==='gasp') distantScream(now+0.25); else crowCall(now+0.2);
+    return;
+  }
+  eng.cg.gain.setValueAtTime(base,now);
   if(type==='gasp'){
-    // the whole crowd reacts to YOU going down — a huge collective "WHOAAA"
-    eng.cg.gain.setValueAtTime(base,now); eng.cg.gain.linearRampToValueAtTime(0.34,now+0.12); eng.cg.gain.linearRampToValueAtTime(base,now+2.0);
-    eng.bp.frequency.setValueAtTime(950,now); eng.bp.frequency.exponentialRampToValueAtTime(280,now+2.0);
-    const o=actx.createOscillator(), og=actx.createGain(), lp=actx.createBiquadFilter();
-    o.type='sawtooth'; o.frequency.setValueAtTime(440,now); o.frequency.exponentialRampToValueAtTime(160,now+1.2);   // falling "ohhh"
-    lp.type='lowpass'; lp.frequency.value=900; og.gain.setValueAtTime(0,now); og.gain.linearRampToValueAtTime(0.07,now+0.1); og.gain.linearRampToValueAtTime(0,now+1.4);
-    o.connect(lp); lp.connect(og); og.connect(actx.destination); o.start(now); o.stop(now+1.45);
+    eng.cg.gain.linearRampToValueAtTime(0.30,now+0.14);
+    eng.cg.gain.linearRampToValueAtTime(base,now+2.0);
+    voiceSwell(now,'ohh');
   } else {
-    // bright cheer when a rival gets wrecked
-    eng.cg.gain.setValueAtTime(base,now); eng.cg.gain.linearRampToValueAtTime(0.26,now+0.06); eng.cg.gain.linearRampToValueAtTime(base,now+1.3);
-    eng.bp.frequency.setValueAtTime(1700,now); eng.bp.frequency.exponentialRampToValueAtTime(700,now+1.3);
+    eng.cg.gain.linearRampToValueAtTime(0.24,now+0.07);
+    eng.cg.gain.linearRampToValueAtTime(base,now+1.3);
+    voiceSwell(now,'yeah');
+  }
+}catch(e){} }
+/* A crowd's "ohhh" is a stack of slightly-detuned voices sharing formants —
+   the detune is what makes it a crowd instead of one person with a megaphone. */
+function voiceSwell(t,kind){ try{
+  const fall = kind==='ohh';
+  const mix=actx.createGain(); mix.gain.value=1; mix.connect(actx.destination);
+  const f1=actx.createBiquadFilter(); f1.type='bandpass'; f1.frequency.value=fall?620:900; f1.Q.value=2.6;
+  const f2=actx.createBiquadFilter(); f2.type='bandpass'; f2.frequency.value=fall?1080:1650; f2.Q.value=2.2;
+  const fg=actx.createGain(); fg.gain.value=0.0001;
+  f1.connect(fg); f2.connect(fg); fg.connect(mix);
+  const dur = fall?1.6:1.1;
+  fg.gain.setValueAtTime(0.0001,t);
+  fg.gain.linearRampToValueAtTime(fall?0.075:0.06, t+(fall?0.16:0.07));
+  fg.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  for(let v=0;v<7;v++){                                  // seven voices, all slightly off
+    const o=actx.createOscillator(); o.type='sawtooth';
+    const hz=(fall?170:230)*(1+(Math.random()-0.5)*0.09);
+    o.frequency.setValueAtTime(hz,t);
+    if(fall) o.frequency.exponentialRampToValueAtTime(hz*0.62,t+dur);
+    else     o.frequency.linearRampToValueAtTime(hz*1.12,t+0.18);
+    const og=actx.createGain(); og.gain.value=0.14;
+    o.connect(og); og.connect(f1); og.connect(f2);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  setTimeout(()=>{ try{mix.disconnect();}catch(e){} }, (dur+0.4)*1000);
+}catch(e){} }
+/* Something a long way off in the trees. Bandpassed to sit in the distance. */
+function distantScream(t){ try{
+  const o=actx.createOscillator(), g=actx.createGain(), bpf=actx.createBiquadFilter(), lp=actx.createBiquadFilter();
+  o.type='sawtooth';
+  o.frequency.setValueAtTime(430,t);
+  o.frequency.linearRampToValueAtTime(690,t+0.22);
+  o.frequency.linearRampToValueAtTime(380,t+1.0);
+  bpf.type='bandpass'; bpf.frequency.value=1100; bpf.Q.value=1.8;
+  lp.type='lowpass'; lp.frequency.value=2200;            // distance rolls off the top
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.linearRampToValueAtTime(0.05,t+0.12);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+1.15);
+  const lfo=actx.createOscillator(), ld=actx.createGain();   // ragged, not a clean tone
+  lfo.frequency.value=7.5; ld.gain.value=26; lfo.connect(ld); ld.connect(o.frequency); lfo.start(t);
+  o.connect(bpf); bpf.connect(lp); lp.connect(g); g.connect(actx.destination);
+  o.start(t); o.stop(t+1.2); lfo.stop(t+1.2);
+}catch(e){} }
+/* Crows breaking from the canopy — three ragged caws. */
+function crowCall(t){ try{
+  for(let i=0;i<3;i++){ const tt=t+i*0.19;
+    const o=actx.createOscillator(), g=actx.createGain(), bpf=actx.createBiquadFilter();
+    o.type='sawtooth';
+    o.frequency.setValueAtTime(560-i*40,tt);
+    o.frequency.exponentialRampToValueAtTime(300-i*20,tt+0.13);
+    bpf.type='bandpass'; bpf.frequency.value=1500; bpf.Q.value=2.4;
+    g.gain.setValueAtTime(0.0001,tt);
+    g.gain.linearRampToValueAtTime(0.045,tt+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,tt+0.16);
+    o.connect(bpf); bpf.connect(g); g.connect(actx.destination);
+    o.start(tt); o.stop(tt+0.18);
   }
 }catch(e){} }
 function engineSet(spd,slide){ if(!eng)return; if(!soundOn){try{eng.g.gain.value=0;eng.ag.gain.value=0;eng.cg.gain.value=0;}catch(e){}return;} try{
@@ -1491,319 +2278,319 @@ function engineSet(spd,slide){ if(!eng)return; if(!soundOn){try{eng.g.gain.value
   eng.g.gain.value=0.028+Math.min(0.05,s/6000);
   eng.ag.gain.value=0.02;
   eng.f.frequency.value=700+(slide>55?1600:0)+s*1.2; }catch(e){} }
-function engineStop(){ if(eng){ try{ eng.g.gain.value=0; eng.o.stop(); eng.o2.stop(); eng.a1.stop(); eng.a2.stop(); eng.noise.stop(); }catch(e){} eng=null; } }
+function engineStop(){ if(eng){ try{ eng.g.gain.value=0; eng.o.stop(); eng.o2.stop(); eng.a1.stop(); eng.a2.stop(); eng.noise.stop();
+  if(eng.bands) eng.bands.forEach(b=>{ try{b.lfo.stop();}catch(e){} }); }catch(e){} eng=null; } }
 function beep(f,d){ if(!soundOn)return; try{ if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
   const o=actx.createOscillator(),g=actx.createGain(); o.connect(g);g.connect(actx.destination);
   o.type='square';o.frequency.value=f; g.gain.setValueAtTime(.08,actx.currentTime);
   g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+d); o.start();o.stop(actx.currentTime+d);}catch(e){} }
 
 /* ================================================================
-   MUSIC — six original scores, one per circuit
-   Same low-end engine throughout (deep kick · sub · growl bass ·
-   low toms) so the soundtrack feels like one album, but each track
-   gets its own tempo, key, riff, drum feel and signature voice
-   themed to the circuit's name.
-   Nothing sits above the bass register except quiet signature hits.
+   MUSIC — six drum & bass scores, one per circuit
+   174 BPM · 48 bars · ~66s · liquid-DnB arrangement:
+     intro 8 → build 8 (snare roll) → DROP 16 → break 8 → DROP 16
+   Two-step break (kick 1, snare 3), long sine sub underneath,
+   detuned reese for the drops, plucks and pads for the liquid bits.
+   Halloween keys and per-circuit signature voices kept throughout.
    ================================================================ */
 let musicOn=true;
 const mtof=m=>440*Math.pow(2,(m-69)/12);
 const MUS={playing:false,step:0,next:0,timer:null,bus:null,nb:null,lp:null,sc:null,spf:0,steps:0};
 
-/* Riff shorthand: 16 slots per bar, offset in semitones from bar root, _ = rest */
 const _=null;
+/* Shared reese rhythms — DnB basslines are rhythm patterns more than melodies,
+   so the tracks share templates and differ by key, drums, lead and signature. */
+const REESE={
+  stab:  [0,_,_,0,  _,_,0,_,  _,0,_,_,  0,_,_,_],
+  roll:  [0,_,0,_,  _,0,_,0,  _,_,0,_,  0,_,0,_],
+  wide:  [0,_,_,_,  _,_,_,_,  0,_,_,_,  _,_,7,_],
+  churn: [0,_,0,0,  _,0,_,_,  0,_,0,_,  _,0,_,0]
+};
+
 const SCORES=[
- /* ── 0 · THE DEADLY 500 — relentless, motorik, engine-like. Fastest. ── */
- { bpm:136, bars:32, cut:5200, gain:0.465, sig:'siren',
-   prog:[38,38,36,36,38,38,34,33],
-   drums:'drive',
-   riff:[
-    [0,_,0,_, 0,_,0,_, 0,_,0,_, 12,_,0,_],
-    [0,_,0,_, 0,_,0,_, 7,_,7,_, 0,_,0,_],
-    [0,_,0,_, 0,_,0,_, 0,_,12,_, 0,_,0,_],
-    [0,_,0,_, 0,_,7,_, 0,_,0,_, 0,_,0,_],
-    [0,_,0,_, 0,_,0,_, 0,_,0,_, 12,_,0,_],
-    [0,_,0,_, 0,_,0,_, 7,_,7,_, 0,_,0,_],
-    [0,_,0,_, 12,_,0,_, 0,_,7,_, 0,_,0,_],
-    [0,_,0,0, 0,_,0,0, 0,_,0,0, 0,0,0,0]]},
+ /* ── 0 · THE DEADLY 500 — flat out, rolling break, no let-up ── */
+ { bpm:176, cut:7600, gain:0.465, sig:'siren', key:38,
+   prog:[38,38,36,36,38,38,34,33], drums:'rolling', reese:'roll',
+   lead:[12,_,_,15, _,12,_,_,  19,_,15,_,  12,_,_,_] },
 
- /* ── 1 · FRANKENSTEIN'S CASTLE — lurching, uneven monster gait, voltage ── */
- { bpm:116, bars:32, cut:4600, gain:0.465, sig:'zap',
-   prog:[40,40,36,36,40,40,33,35],
-   drums:'lurch',
-   riff:[
-    [0,_,_,_, _,_,0,_, 0,_,_,_, _,0,_,_],
-    [0,_,_,_, _,_,0,_, 12,_,_,0, _,_,_,_],
-    [0,_,_,_, _,_,0,_, 0,_,_,_, _,7,_,_],
-    [0,_,_,0, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,0,_, 0,_,_,_, _,0,_,_],
-    [0,_,_,_, _,_,0,_, 12,_,_,0, _,_,_,_],
-    [0,_,_,_, _,_,7,_, 0,_,_,_, _,0,_,_],
-    [0,_,_,0, 0,_,_,0, 0,_,_,0, 0,_,0,_]]},
+ /* ── 1 · FRANKENSTEIN'S CASTLE — lurching amen break, voltage ── */
+ { bpm:172, cut:6800, gain:0.465, sig:'zap', key:40,
+   prog:[40,40,36,36,40,40,33,35], drums:'amen', reese:'churn',
+   lead:[12,_,_,_, 15,_,12,_,  _,_,17,_,  15,_,_,_] },
 
- /* ── 2 · DRACULA'S CASTLE — gothic, elegant menace, 6/8 sway, organ ── */
- { bpm:120, bars:32, cut:4200, gain:0.465, sig:'organ',
-    prog:[33,33,29,31,33,33,29,40],
-   drums:'sway',
-   riff:[
-    [0,_,_,0, _,_,7,_, _,0,_,_, 12,_,_,_],
-    [0,_,_,0, _,_,0,_, _,7,_,_, 0,_,_,_],
-    [0,_,_,0, _,_,12,_, _,7,_,_, 0,_,_,_],
-    [0,_,_,0, _,_,7,_, _,0,_,_, 0,_,_,_],
-    [0,_,_,0, _,_,7,_, _,0,_,_, 12,_,_,_],
-    [0,_,_,0, _,_,0,_, _,7,_,_, 0,_,_,_],
-    [0,_,_,0, _,_,12,_, _,7,_,_, 0,_,_,_],
-    [0,_,_,_, _,_,11,_, _,_,_,_, 0,_,_,_]]},
+ /* ── 2 · DRACULA'S CASTLE — liquid, lush pads, gothic ── */
+ { bpm:174, cut:7200, gain:0.465, sig:'organ', key:33,
+   prog:[33,33,29,31,33,33,29,40], drums:'twostep', reese:'wide',
+   lead:[12,_,15,_, 19,_,_,15,  12,_,_,19,  _,_,15,_] },
 
- /* ── 3 · CRYSTAL LAKE PASS — stalking. Mostly silence, then a stab. ── */
- { bpm:100, bars:24, cut:3800, gain:0.465, sig:'stalk',
-   prog:[30,30,30,30,35,35,30,30],
-   drums:'stalk',
-   riff:[
-    [0,_,_,_, _,_,_,_, _,_,_,_, _,_,_,_],
-    [_,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, _,_,_,_, 3,_,_,_],
-    [_,_,_,_, 0,_,_,_, _,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, _,_,_,_, _,_,_,_],
-    [_,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, 5,_,_,_, _,_,_,_],
-    [0,_,_,_, 0,_,_,_, 0,_,_,_, 0,_,0,_]]},
+ /* ── 3 · CRYSTAL LAKE PASS — sparse, stalking, half the notes ── */
+ { bpm:174, cut:6400, gain:0.465, sig:'stalk', key:30,
+   prog:[30,30,30,30,35,35,30,30], drums:'twostep', reese:'stab',
+   lead:[12,_,_,_, _,_,15,_,  _,_,_,_,  12,_,_,_] },
 
- /* ── 4 · RACCOON CITY RACEWAY — industrial, alarms, machinery ── */
- { bpm:126, bars:32, cut:5000, gain:0.465, sig:'alarm',
-   prog:[36,36,34,34,36,36,31,32],
-   drums:'machine',
-   riff:[
-    [0,_,0,_, _,0,_,_, 0,_,0,_, _,0,_,_],
-    [0,_,0,_, _,0,_,_, 0,_,_,0, _,_,0,_],
-    [0,_,0,_, _,0,_,_, 12,_,0,_, _,0,_,_],
-    [0,_,0,_, _,7,_,_, 0,_,0,_, _,0,_,_],
-    [0,_,0,_, _,0,_,_, 0,_,0,_, _,0,_,_],
-    [0,_,0,_, _,0,_,_, 0,_,_,0, _,_,0,_],
-    [0,_,0,_, _,12,_,_, 0,_,7,_, _,0,_,_],
-    [0,0,_,0, 0,_,0,0, _,0,0,_, 0,_,0,0]]},
+ /* ── 4 · RACCOON CITY RACEWAY — industrial, machine-tight ── */
+ { bpm:176, cut:7400, gain:0.465, sig:'alarm', key:36,
+   prog:[36,36,34,34,36,36,31,32], drums:'amen', reese:'churn',
+   lead:[12,_,12,_, 15,_,_,12,  _,15,_,_,  17,_,_,_] },
 
- /* ── 5 · AMITYVILLE RACEWAY — slow dread, heartbeat, broken lullaby ── */
- { bpm:104, bars:24, cut:4000, gain:0.465, sig:'bell',
-   prog:[31,31,36,36,34,34,31,33],
-   drums:'heart',
-   riff:[
-    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, _,_,7,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,12,_, _,_,_,_, 0,_,_,_],
-    [0,_,_,_, _,_,_,_, 0,_,_,_, _,_,_,_],
-    [0,_,_,_, _,_,_,_, _,_,7,_, _,_,_,_],
-    [0,_,_,_, 0,_,_,_, _,_,_,_, 0,_,_,_],
-    [0,_,_,0, _,_,_,_, 0,_,_,0, _,_,_,_]]},
+ /* ── 5 · AMITYVILLE RACEWAY — liquid and eerie, broken lullaby ── */
+ { bpm:172, cut:6600, gain:0.465, sig:'bell', key:31,
+   prog:[31,31,36,36,34,34,31,33], drums:'twostep', reese:'wide',
+   lead:[12,_,_,15, _,_,19,_,  _,15,_,_,  12,_,_,_] }
 ];
 
-function sectionOf(bar,bars){ const q=bars/4; return bar<q?0 : bar<q*2?1 : bar<q*3?2 : 3; }
+const BARS=48, STEPS=BARS*16;
+/* A real DnB arrangement, not four equal quarters. */
+function sectionOf(bar){
+  if(bar<8)  return 'intro';
+  if(bar<16) return 'build';
+  if(bar<32) return 'drop';
+  if(bar<40) return 'break';
+  return 'drop2';
+}
 
 function musNoise(){ if(MUS.nb)return MUS.nb;
   const b=actx.createBuffer(1,actx.sampleRate*1,actx.sampleRate), d=b.getChannelData(0);
   for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
   MUS.nb=b; return b; }
 
-/* ---------------- core voices (shared by every score) ---------------- */
-function mKick(t,hard){ const o=actx.createOscillator(),g=actx.createGain();
-  o.type='sine'; o.frequency.setValueAtTime(hard?115:95,t);
-  o.frequency.exponentialRampToValueAtTime(33,t+0.16);
-  g.gain.setValueAtTime(hard?0.85:0.6,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.34);
-  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.36);
+/* ---------------- drums ---------------- */
+// DnB kick: short and punchy. The sub carries the weight, so the kick doesn't
+// need a long tail — it needs attack.
+function mKick(t,v){ const g0=v||1;
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(165,t);
+  o.frequency.exponentialRampToValueAtTime(46,t+0.055);
+  g.gain.setValueAtTime(0.85*g0,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.19);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.21);
   const c=actx.createBufferSource(),hp=actx.createBiquadFilter(),cg=actx.createGain();
-  c.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=1200;
-  cg.gain.setValueAtTime(0.05,t); cg.gain.exponentialRampToValueAtTime(0.001,t+0.02);
+  c.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=1800;
+  cg.gain.setValueAtTime(0.07*g0,t); cg.gain.exponentialRampToValueAtTime(0.001,t+0.015);
   c.connect(hp); hp.connect(cg); cg.connect(MUS.bus); c.start(t); c.stop(t+0.03); }
 
-function mTom(t,hz){ const o=actx.createOscillator(),g=actx.createGain();
-  o.type='sine'; o.frequency.setValueAtTime(hz,t); o.frequency.exponentialRampToValueAtTime(hz*0.55,t+0.22);
-  g.gain.setValueAtTime(0.34,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
-  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.32);
-  const n=actx.createBufferSource(),bp=actx.createBiquadFilter(),ng=actx.createGain();
-  n.buffer=musNoise(); bp.type='bandpass'; bp.frequency.value=hz*2.2; bp.Q.value=1.4;
-  ng.gain.setValueAtTime(0.06,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.09);
-  n.connect(bp); bp.connect(ng); ng.connect(MUS.bus); n.start(t); n.stop(t+0.1); }
+// The snare is the whole genre. Layered: noise crack + tuned body + a short
+// bright tail so it snaps instead of thudding.
+function mSnare(t,v){ const g0=v||1;
+  const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),hp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise();
+  bp.type='bandpass'; bp.frequency.value=2100; bp.Q.value=0.8;
+  hp.type='highpass'; hp.frequency.value=900;
+  g.gain.setValueAtTime(0.34*g0,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.17);
+  s.connect(hp); hp.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.19);
+  const o=actx.createOscillator(),og=actx.createGain();
+  o.type='triangle'; o.frequency.setValueAtTime(330,t); o.frequency.exponentialRampToValueAtTime(180,t+0.08);
+  og.gain.setValueAtTime(0.14*g0,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+  o.connect(og); og.connect(MUS.bus); o.start(t); o.stop(t+0.12); }
 
+function mGhost(t){ const s=actx.createBufferSource(),hp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=1400;
+  g.gain.setValueAtTime(0.055,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+  s.connect(hp); hp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.07); }
+
+function mHat(t,acc,open){ const s=actx.createBufferSource(),hp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=8600;
+  const d=open?0.12:0.028;
+  g.gain.setValueAtTime(acc?0.075:0.035,t); g.gain.exponentialRampToValueAtTime(0.001,t+d);
+  s.connect(hp); hp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+d+0.02); }
+
+function mRide(t){ const s=actx.createBufferSource(),hp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=6200;
+  g.gain.setValueAtTime(0.03,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  s.connect(hp); hp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.32); }
+
+/* ---------------- bass ---------------- */
+// Pure sine sub — the foundation. Long, sustained, one note per bar mostly.
 function mSub(t,m,dur){ const o=actx.createOscillator(),g=actx.createGain();
-  o.type='sine'; o.frequency.value=mtof(m);
-  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.34,t+0.015);
-  g.gain.setValueAtTime(0.34,t+dur*0.7); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.type='sine'; o.frequency.setValueAtTime(mtof(m),t);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.4,t+0.02);
+  g.gain.setValueAtTime(0.4,t+dur*0.82); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
   o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+dur+0.03); }
 
-function mGrowl(t,m,dur,vol){ const o=actx.createOscillator(),o2=actx.createOscillator(),
-  f=actx.createBiquadFilter(),g=actx.createGain(); const hz=mtof(m);
-  o.type='sawtooth'; o.frequency.value=hz;
-  o2.type='sawtooth'; o2.frequency.value=hz*1.012;
-  f.type='lowpass'; f.Q.value=7;
-  f.frequency.setValueAtTime(560,t); f.frequency.exponentialRampToValueAtTime(180,t+dur);
-  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.02);
-  g.gain.setValueAtTime(vol,t+dur*0.65); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
-  o.connect(f); o2.connect(f); f.connect(g); g.connect(MUS.bus);
-  o.start(t); o2.start(t); o.stop(t+dur+0.03); o2.stop(t+dur+0.03); }
+// Reese: two saws detuned against each other through a resonant lowpass.
+// The beating between them IS the sound.
+function mReese(t,m,dur,vol){ const hz=mtof(m);
+  const f=actx.createBiquadFilter(),g=actx.createGain();
+  f.type='lowpass'; f.Q.value=9;
+  f.frequency.setValueAtTime(1500,t); f.frequency.exponentialRampToValueAtTime(320,t+dur);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.012);
+  g.gain.setValueAtTime(vol,t+dur*0.7); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  [1,1.013,0.991].forEach(dt2=>{ const o=actx.createOscillator();
+    o.type='sawtooth'; o.frequency.value=hz*dt2; o.connect(f); o.start(t); o.stop(t+dur+0.03); });
+  f.connect(g); g.connect(MUS.bus); }
 
-function mDrone(t,m,dur,vol){ const o=actx.createOscillator(),o2=actx.createOscillator(),
-  f=actx.createBiquadFilter(),g=actx.createGain(); const hz=mtof(m), v=vol||0.13;
-  o.type='triangle'; o.frequency.value=hz; o2.type='sawtooth'; o2.frequency.value=hz*0.997;
-  f.type='lowpass'; f.frequency.value=420;
-  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(v,t+0.5);
-  g.gain.setValueAtTime(v,t+dur*0.6); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
-  o.connect(f); o2.connect(f); f.connect(g); g.connect(MUS.bus);
-  o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05); }
+/* ---------------- melodic ---------------- */
+// Netsky-ish pluck: bright attack, fast decay, a touch of detune
+function mPluck(t,m,vol){ const hz=mtof(m);
+  const f=actx.createBiquadFilter(),g=actx.createGain();
+  f.type='lowpass'; f.frequency.setValueAtTime(4200,t); f.frequency.exponentialRampToValueAtTime(900,t+0.3);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.006);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.34);
+  [1,1.006].forEach(d=>{ const o=actx.createOscillator();
+    o.type='triangle'; o.frequency.value=hz*d; o.connect(f); o.start(t); o.stop(t+0.36); });
+  const s=actx.createOscillator(); s.type='sawtooth'; s.frequency.value=hz;
+  const sg=actx.createGain(); sg.gain.value=0.35; s.connect(sg); sg.connect(f); s.start(t); s.stop(t+0.36);
+  f.connect(g); g.connect(MUS.bus); }
 
-function mHat(t,acc){ const s=actx.createBufferSource(),hp=actx.createBiquadFilter(),
-  lp=actx.createBiquadFilter(),g=actx.createGain();
-  s.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=5000;
-  lp.type='lowpass'; lp.frequency.value=9000;
-  g.gain.setValueAtTime(acc?0.055:0.025,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.03);
-  s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.05); }
+// Lush chord pad — the "liquid" in liquid DnB
+function mPad(t,root,dur,vol){ const g=actx.createGain(); g.gain.value=1; g.connect(MUS.bus);
+  [0,3,7,10,12].forEach((iv,n)=>{ const o=actx.createOscillator(),og=actx.createGain(),f=actx.createBiquadFilter();
+    o.type=n%2?'triangle':'sawtooth'; o.frequency.value=mtof(root+iv)*(1+(n-2)*0.0015);
+    f.type='lowpass'; f.frequency.value=1500;
+    const v=vol*(n===0?0.5:0.3);
+    og.gain.setValueAtTime(0.001,t); og.gain.linearRampToValueAtTime(v,t+dur*0.28);
+    og.gain.setValueAtTime(v,t+dur*0.7); og.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(f); f.connect(og); og.connect(g); o.start(t); o.stop(t+dur+0.05); }); }
 
-/* ---------------- signature voices (one per circuit) ---------------- */
-// DEADLY 500 — a distant klaxon wailing over the speedway
+// Impact for the top of a drop
+function mImpact(t){ const s=actx.createBufferSource(),lp=actx.createBiquadFilter(),g=actx.createGain();
+  s.buffer=musNoise(); lp.type='lowpass'; lp.frequency.setValueAtTime(1800,t);
+  lp.frequency.exponentialRampToValueAtTime(140,t+1.1);
+  g.gain.setValueAtTime(0.22,t); g.gain.exponentialRampToValueAtTime(0.001,t+1.2);
+  s.connect(lp); lp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+1.25);
+  const o=actx.createOscillator(),og=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(90,t); o.frequency.exponentialRampToValueAtTime(32,t+0.7);
+  og.gain.setValueAtTime(0.5,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.8);
+  o.connect(og); og.connect(MUS.bus); o.start(t); o.stop(t+0.85); }
+
+/* ---------------- signature voices (unchanged per circuit) ---------------- */
 function sSiren(t){ const o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
-  o.type='sawtooth'; o.frequency.setValueAtTime(160,t);
-  o.frequency.linearRampToValueAtTime(300,t+0.9); o.frequency.linearRampToValueAtTime(150,t+1.9);
-  f.type='lowpass'; f.frequency.value=900;
-  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.05,t+0.4);
-  g.gain.exponentialRampToValueAtTime(0.001,t+2.0);
-  o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+2.05); }
-
-// FRANKENSTEIN — Tesla coil discharge
+  o.type='sawtooth'; o.frequency.setValueAtTime(200,t);
+  o.frequency.linearRampToValueAtTime(380,t+0.7); o.frequency.linearRampToValueAtTime(180,t+1.5);
+  f.type='lowpass'; f.frequency.value=1100;
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.05,t+0.3);
+  g.gain.exponentialRampToValueAtTime(0.001,t+1.6);
+  o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+1.65); }
 function sZap(t){ const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
   s.buffer=musNoise(); bp.type='bandpass'; bp.Q.value=2.2;
-  bp.frequency.setValueAtTime(2600,t); bp.frequency.exponentialRampToValueAtTime(700,t+0.28);
-  g.gain.setValueAtTime(0.14,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
-  s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.32);
-  const o=actx.createOscillator(),og=actx.createGain();   // the arc's pitched crack
-  o.type='square'; o.frequency.setValueAtTime(420,t); o.frequency.exponentialRampToValueAtTime(90,t+0.18);
-  og.gain.setValueAtTime(0.05,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.2);
-  o.connect(og); og.connect(MUS.bus); o.start(t); o.stop(t+0.22); }
-
-// DRACULA — low pipe-organ chord swell (root + fifth + octave)
+  bp.frequency.setValueAtTime(3000,t); bp.frequency.exponentialRampToValueAtTime(800,t+0.22);
+  g.gain.setValueAtTime(0.13,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.24);
+  s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.26); }
 function sOrgan(t,root,dur){ const g=actx.createGain(); g.gain.value=1; g.connect(MUS.bus);
   [0,7,12].forEach((iv,n)=>{ const o=actx.createOscillator(),og=actx.createGain(),f=actx.createBiquadFilter();
     o.type=n===2?'triangle':'sawtooth'; o.frequency.value=mtof(root+iv);
-    f.type='lowpass'; f.frequency.value=760;
-    const v=n===0?0.075:n===1?0.05:0.035;
-    og.gain.setValueAtTime(0.001,t); og.gain.linearRampToValueAtTime(v,t+0.35);
+    f.type='lowpass'; f.frequency.value=900;
+    const v=n===0?0.06:0.04;
+    og.gain.setValueAtTime(0.001,t); og.gain.linearRampToValueAtTime(v,t+0.3);
     og.gain.setValueAtTime(v,t+dur*0.65); og.gain.exponentialRampToValueAtTime(0.001,t+dur);
     o.connect(f); f.connect(og); og.connect(g); o.start(t); o.stop(t+dur+0.05); }); }
-
-// CRYSTAL LAKE — breathy whisper-stab. Air, not tone. The stalker's cue.
-function sStalk(t,n){ for(let i=0;i<n;i++){ const tt=t+i*0.14;
+function sStalk(t,n){ for(let i=0;i<n;i++){ const tt=t+i*0.1;
     const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
     s.buffer=musNoise(); bp.type='bandpass'; bp.Q.value=4.5;
-    bp.frequency.setValueAtTime(1400-i*120,tt);
-    g.gain.setValueAtTime(0.001,tt); g.gain.linearRampToValueAtTime(0.075,tt+0.02);
-    g.gain.exponentialRampToValueAtTime(0.001,tt+0.12);
-    s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(tt); s.stop(tt+0.14); } }
-
-// RACCOON CITY — two-tone containment alarm + metal clank
-function sAlarm(t){ [0,0.42].forEach((d,i)=>{ const o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
-    o.type='square'; o.frequency.value=i?300:225;
-    f.type='lowpass'; f.frequency.value=1100;
-    g.gain.setValueAtTime(0.001,t+d); g.gain.linearRampToValueAtTime(0.045,t+d+0.05);
-    g.gain.setValueAtTime(0.045,t+d+0.3); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.4);
-    o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t+d); o.stop(t+d+0.42); }); }
-function sClank(t){ const s=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
-  s.buffer=musNoise(); bp.type='bandpass'; bp.frequency.value=2200; bp.Q.value=6;
-  g.gain.setValueAtTime(0.06,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.13);
-  s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(t); s.stop(t+0.15); }
-
-// AMITYVILLE — a detuned music-box bell, the lullaby gone wrong
+    bp.frequency.setValueAtTime(1500-i*130,tt);
+    g.gain.setValueAtTime(0.001,tt); g.gain.linearRampToValueAtTime(0.07,tt+0.015);
+    g.gain.exponentialRampToValueAtTime(0.001,tt+0.1);
+    s.connect(bp); bp.connect(g); g.connect(MUS.bus); s.start(tt); s.stop(tt+0.12); } }
+function sAlarm(t){ [0,0.3].forEach((d,i)=>{ const o=actx.createOscillator(),g=actx.createGain(),f=actx.createBiquadFilter();
+    o.type='square'; o.frequency.value=i?320:240;
+    f.type='lowpass'; f.frequency.value=1300;
+    g.gain.setValueAtTime(0.001,t+d); g.gain.linearRampToValueAtTime(0.042,t+d+0.04);
+    g.gain.setValueAtTime(0.042,t+d+0.2); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.29);
+    o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t+d); o.stop(t+d+0.3); }); }
 function sBell(t,m){ const o=actx.createOscillator(),o2=actx.createOscillator(),g=actx.createGain();
   const hz=mtof(m);
   o.type='sine'; o.frequency.value=hz;
-  o2.type='sine'; o2.frequency.value=hz*2.76;            // inharmonic = bell, not tone
+  o2.type='sine'; o2.frequency.value=hz*2.76;
   const g2=actx.createGain(); g2.gain.value=0.35; o2.connect(g2); g2.connect(g);
-  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.055,t+0.01);
-  g.gain.exponentialRampToValueAtTime(0.001,t+1.5);
-  o.connect(g); g.connect(MUS.bus); o.start(t); o2.start(t); o.stop(t+1.55); o2.stop(t+1.55); }
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.05,t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.001,t+1.2);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o2.start(t); o.stop(t+1.25); o2.stop(t+1.25); }
 
 /* ---------------- the sequencer ---------------- */
 function musStep(i,t){
-  const S=MUS.sc, SPF=MUS.spf, BARS=S.bars;
-  const bar=(i>>4)%BARS, s=i&15, sec=sectionOf(bar,BARS), pb=bar%8, root=S.prog[pb];
-  let subM=root-12; if(subM<26) subM+=12;      // keep the sub audible (>=~36Hz)
-  const full=sec===3, dread=sec===2;
+  const S=MUS.sc, SPF=MUS.spf;
+  const bar=(i>>4)%BARS, s=i&15, sec=sectionOf(bar), pb=bar%8, root=S.prog[pb];
+  let subM=root-12; if(subM<26) subM+=12;
+  const heavy = (sec==='drop'||sec==='drop2');
 
-  /* ---- DREAD BREAKDOWN: shared shape, per-track colour ---- */
-  if(dread){
-    if(s===0){ mKick(t,true); mSub(t,subM,SPF*14); mDrone(t,root,SPF*15,0.13); }
-    if(s===8 && pb%2===1) mTom(t,78);
-    if(pb===7 && s>=8 && s%2===0) mTom(t,66+s*3);        // roll back into the drop
-    if(S.sig==='stalk' && s===0 && pb%2===0) sStalk(t,3);
-    if(S.sig==='zap'   && s===12 && pb%2===1) sZap(t);
-    if(S.sig==='organ' && s===0 && pb%4===0) sOrgan(t,root,SPF*15);
-    if(S.sig==='bell'  && s===0) sBell(t,root+24);
-    if(S.sig==='alarm' && s===0 && pb%2===0) sAlarm(t);
-    if(S.sig==='siren' && s===0 && pb===0) sSiren(t);
+  /* ---- BREAK: strip it back, let the pad breathe, hold the tension ---- */
+  if(sec==='break'){
+    if(s===0){ mSub(t,subM,SPF*15.5); mPad(t,root+12,SPF*15.5,0.075); }
+    if(s===0&&pb%2===0) mKick(t,0.8);
+    if(s===8) mSnare(t,0.55);
+    if(s%4===2) mHat(t,false);
+    if(bar===39){                                    // last bar of the break = ramp back in
+      if(s%2===0) mGhost(t);
+      if(s===14) mImpact(t);
+    }
+    if(S.sig==='stalk'&&s===0&&pb%2===0) sStalk(t,3);
+    if(S.sig==='bell' &&s===0) sBell(t,root+24);
+    if(S.sig==='organ'&&s===0&&pb%4===0) sOrgan(t,root,SPF*15);
     return;
   }
 
-  /* ---- DRUMS: each circuit walks differently ---- */
+  /* ---- INTRO: sub + pad + skeleton beat, no reese yet ---- */
+  if(sec==='intro'){
+    if(s===0){ mSub(t,subM,SPF*15.5); mPad(t,root+12,SPF*15.5,0.06); }
+    if(s===0) mKick(t,0.9);
+    if(s===8) mSnare(t,0.8);
+    if(s%2===0) mHat(t,s%4===0);
+    if(pb>=4){ const n=S.lead[s]; if(n!==null&&n!==undefined) mPluck(t,root+n,0.05); }
+    return;
+  }
+
+  /* ---- BUILD: add the reese, then a snare roll into the drop ---- */
+  if(sec==='build'){
+    if(s===0){ mSub(t,subM,SPF*15.5); mPad(t,root+12,SPF*15.5,0.07); }
+    if(s===0||s===10) mKick(t,0.95);
+    if(s===4||s===12) mSnare(t,0.9);
+    if(s%2===0) mHat(t,s%4===0);
+    const n=S.lead[s]; if(n!==null&&n!==undefined) mPluck(t,root+n,0.06);
+    const rz=REESE[S.reese][s]; if(rz!==null&&rz!==undefined) mReese(t,root+rz,SPF*2,0.1);
+    if(bar===15){                                    // the roll: doubles up, then impact
+      if(s>=0&&s<8&&s%2===0) mSnare(t,0.5+s*0.05);
+      if(s>=8&&s<14) mSnare(t,0.6+(s-8)*0.06);
+      if(s>=14) mSnare(t,0.95);
+      if(s===15) mImpact(t);
+    }
+    return;
+  }
+
+  /* ---- DROP: full two-step, reese, the lot ---- */
+  const d2 = sec==='drop2';
+  if(s===0){ mSub(t,subM,SPF*15.5); if(d2) mPad(t,root+12,SPF*15.5,0.05); }
+  if(bar===16&&s===0) mImpact(t);
+  if(bar===40&&s===0) mImpact(t);
+
   switch(S.drums){
-    case 'drive':                                        // four-on-the-floor, never lets up
-      if(s%4===0) mKick(t,s===0);
-      if(s===4||s===12) mTom(t,s===4?96:78);
-      if(s%2===1) mHat(t,s%4===1);
-      if(full&&s%4===2) mHat(t,false);
+    case 'twostep':                                  // the canonical DnB break
+      if(s===0||s===10) mKick(t);
+      if(s===4||s===12) mSnare(t);
+      if(s%2===0) mHat(t,s%4===0,s===14);
+      if(s===7||s===15) mGhost(t);
       break;
-    case 'lurch':                                        // good foot, dragged foot
-      if(s===0) mKick(t,true);
-      if(s===7) mKick(t,false);
-      if(s===10) mTom(t,84);
-      if(full&&s===13) mKick(t,false);
-      if(s===4||s===12) mTom(t,s===4?96:72);
-      if(s%4===2) mHat(t,false);
+    case 'rolling':                                  // busier kicks, relentless
+      if(s===0||s===6||s===10) mKick(t);
+      if(s===4||s===12) mSnare(t);
+      if(d2&&s===14) mSnare(t,0.7);
+      if(s%2===0) mHat(t,s%4===0,s===14);
+      if(s===3||s===9) mGhost(t);
+      if(d2) mRide(t);
       break;
-    case 'sway':                                         // 6/8 gothic waltz over 16
-      if(s===0||s===6||s===12) mKick(t,s===0);
-      if(s===3||s===9||s===15) mHat(t,false);
-      if(s===6) mTom(t,88);
-      if(full&&s===14) mTom(t,70);
-      break;
-    case 'stalk':                                        // almost nothing. space is the threat.
-      if(s===0) mKick(t,true);
-      if(full&&s===8) mKick(t,false);
-      if(s===12) mTom(t,80);
-      if(full&&s===6) mHat(t,false);
-      break;
-    case 'machine':                                      // pistons and stamped metal
-      if(s%4===0) mKick(t,s===0);
-      if(s===4||s===12) mTom(t,s===4?92:76);
-      if(s%2===0) sClank(t);
-      if(full&&s%4===3) mHat(t,true);
-      break;
-    case 'heart':                                        // lub-dub, lub-dub
-      if(s===0) mKick(t,true);
-      if(s===3) mKick(t,false);
-      if(s===8) mKick(t,true);
-      if(s===11) mKick(t,false);
-      if(full&&(s===6||s===14)) mTom(t,74);
+    case 'amen':                                     // chopped-break feel, ghosts everywhere
+      if(s===0||s===10||s===11) mKick(t);
+      if(s===4||s===12) mSnare(t);
+      if(s===7) mSnare(t,0.6);
+      if(s===2||s===9||s===14) mGhost(t);
+      if(s%2===0) mHat(t,s%4===0,s===6);
       break;
   }
 
-  /* ---- SUB: the floor ---- */
-  if(s===0) mSub(t,subM,SPF*8);
-  if(s===8) mSub(t,subM,SPF*8);
+  // reese bassline
+  const rz=REESE[S.reese][s];
+  if(rz!==null&&rz!==undefined) mReese(t,root+rz,SPF*(d2?2.6:2.2),d2?0.15:0.13);
 
-  /* ---- GROWL RIFF: enters at section 1, heavier at full ---- */
-  if(sec>=1){
-    const off=S.riff[pb][s];
-    if(off!==null && off!==undefined)
-      mGrowl(t, root+off, SPF*(full?2.6:2.2), full?0.2:0.15);
-  } else if(s===0||s===8){
-    mGrowl(t, root, SPF*6, 0.11);                        // intro: long root swells only
-  }
+  // lead plucks — up an octave in the second drop
+  const n=S.lead[s];
+  if(n!==null&&n!==undefined) mPluck(t,root+n+(d2?12:0),d2?0.075:0.065);
 
-  /* ---- SIGNATURE: sparse, so it stays an event ---- */
+  /* ---- signature ---- */
   switch(S.sig){
-    case 'siren': if(s===0 && pb%4===2) sSiren(t); break;
-    case 'zap':   if(s===14 && pb%2===1) sZap(t); if(full&&s===6&&pb%4===3) sZap(t); break;
-    case 'organ': if(s===0 && pb%2===0) sOrgan(t,root,SPF*15); break;
-    case 'stalk': if(s===0 && pb%2===0) sStalk(t,3); if(full&&s===8&&pb%4===3) sStalk(t,3); break;
-    case 'alarm': if(s===0 && pb%4===0) sAlarm(t); break;
-    case 'bell':  if(s===0 && pb%2===0) sBell(t,root+24); if(full&&s===8) sBell(t,root+19); break;
+    case 'siren': if(s===0&&pb%4===2) sSiren(t); break;
+    case 'zap':   if(s===14&&pb%2===1) sZap(t); break;
+    case 'organ': if(s===0&&pb%2===0) sOrgan(t,root,SPF*15); break;
+    case 'stalk': if(s===0&&pb%2===0) sStalk(t,3); break;
+    case 'alarm': if(s===0&&pb%4===0) sAlarm(t); break;
+    case 'bell':  if(s===0&&pb%2===0) sBell(t,root+24); break;
   }
 }
 
@@ -1812,18 +2599,18 @@ function musicStart(){
   try{ if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
     if(actx.state==='suspended') actx.resume();
     if(MUS.playing) return;
-    const S=SCORES[selTrack]||SCORES[0];                 // score follows the chosen circuit
-    MUS.sc=S; MUS.spf=60/S.bpm/4; MUS.steps=S.bars*16;
+    const S=SCORES[selTrack]||SCORES[0];
+    MUS.sc=S; MUS.spf=60/S.bpm/4; MUS.steps=STEPS;
     MUS.lp=actx.createBiquadFilter(); MUS.lp.type='lowpass'; MUS.lp.frequency.value=S.cut;
     MUS.bus=actx.createGain(); MUS.bus.gain.value=0.0;
     MUS.bus.connect(MUS.lp); MUS.lp.connect(actx.destination);
-    MUS.bus.gain.linearRampToValueAtTime(S.gain,actx.currentTime+1.2);
+    MUS.bus.gain.linearRampToValueAtTime(S.gain,actx.currentTime+0.9);
     MUS.step=0; MUS.next=actx.currentTime+0.08; MUS.playing=true;
-    MUS.timer=setInterval(()=>{                          // lookahead scheduler, audio-clock timed
+    MUS.timer=setInterval(()=>{
       if(!MUS.playing) return;
       while(MUS.next < actx.currentTime+0.12){
         musStep(MUS.step,MUS.next);
-        MUS.next+=MUS.spf; MUS.step=(MUS.step+1)%MUS.steps;   // wraps on a bar line → seamless
+        MUS.next+=MUS.spf; MUS.step=(MUS.step+1)%MUS.steps;
       }
     },25);
   }catch(e){}
@@ -1834,8 +2621,8 @@ function musicStop(){
   if(MUS.timer){ clearInterval(MUS.timer); MUS.timer=null; }
   try{ const b=MUS.bus, l=MUS.lp, t=actx.currentTime;
     b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value,t);
-    b.gain.linearRampToValueAtTime(0.0001,t+0.4);
-    setTimeout(()=>{ try{b.disconnect();l.disconnect();}catch(e){} },700);
+    b.gain.linearRampToValueAtTime(0.0001,t+0.35);
+    setTimeout(()=>{ try{b.disconnect();l.disconnect();}catch(e){} },600);
   }catch(e){}
   MUS.bus=null; MUS.lp=null;
 }
@@ -1848,7 +2635,7 @@ addEventListener('resize',resize);
 /* ================================================================
    BOOT
    ================================================================ */
-buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies();
+buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker();
 player=makeKart(CHARS[0],true);
 rivals=CHARS.slice(1).map(c=>makeKart(c,false));
 placeGrid();
