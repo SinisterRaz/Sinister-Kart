@@ -1244,7 +1244,7 @@ function placeGrid(){
     k.x=start.x - rx*(row*30+14) + px*col*26;
     k.y=start.y - ry*(row*30+14) + py*col*26;
     k.ang=ang; k.spd=0; k.vx=0; k.vy=0; k.steer=0; k.drift=0; k.lap=0; k.next=1; k.frac=0; k.wp=4;
-    k.hp=MAXHP; k.dead=0; k.inv=0; k.fireCd=0; k.power=null; k.powerT=0; k.air=0;
+    k.hp=MAXHP; k.dead=0; k.inv=0; k.fireCd=0; k.power=null; k.powerT=0; k.air=0; k._wasAir=0;
     fullNearest(k); k._pnode=k.node;
   });
 }
@@ -1260,12 +1260,16 @@ const BOOST_CAP = Math.round(175/MPH - MAXS);// nitrous ceiling → reads exactl
 const GRIP=3.4;      // rear grip on road — lower = slidier. THE drift knob.
 const GRIP_FADE=0.38;// how much grip the rear loses at full speed → oversteer builds with pace
 const AI_SPEED=1.00; // rivals top out at the same 125; the rubber band does the rest
+/* Global difficulty dial. Raised 10%: applied to how hard the AI drives, how
+   long it carries speed into bends, and how much the hazards hurt — deliberately
+   NOT to rival top speed, which stays pinned at the 125 the cars are rated for. */
+const DIFF=1.10;
 const AI_FIRE_DELAY=10;   // seconds of clean racing before the AI is allowed to shoot
 const GRIP_OFF=1.1;  // grip off-track (loose, slidey)
 const COAST=1.2;     // rolling decel when off the gas
 const SLIDE_MIN=52, MT1=0.34, MT2=0.82;    // slide threshold (used for drift feedback + meter fill)
 const RECHARGE=0.07, DRIFT_FILL=0.22, DRAIN=0.95, BOOST_ACC=330, COOLDOWN=2.2; // turbo: refill, drift bonus, drain, power, empty-lockout secs
-const FIRE_CD=0.5, PROJ_SPD=430, PROJ_LIFE=1.5, PROJ_DMG=40, HIT_R=22, MAXHP=100, RESPAWN=2.4, PROJ_RANGE=560; // combat
+const FIRE_CD=0.45, PROJ_SPD=430, PROJ_LIFE=1.5, PROJ_DMG=44, HIT_R=22, MAXHP=100, RESPAWN=2.4, PROJ_RANGE=560; // combat
 
 function onRoad(x,y){
   if(x<0||y<0||x>=WORLD||y>=WORLD) return false;
@@ -1414,9 +1418,9 @@ function aiInput(k){
   let ahead=Math.atan2(far.y-k.y, far.x-k.x)-k.ang;
   while(ahead>Math.PI)ahead-=2*Math.PI; while(ahead<-Math.PI)ahead+=2*Math.PI;
   const steer=clamp(diff*1.6,-1,1);
-  const gas = Math.abs(ahead)<1.1;           // ease off entering sharp bends
-  const brake = Math.abs(ahead)>1.35 && Math.abs(k.spd)>120;
-  return {gas, brake, steer, hop:false, boost:(k.meter>0.7 && Math.abs(ahead)<0.35)};
+  const gas = Math.abs(ahead)<1.1*DIFF;      // ease off entering sharp bends — later, at higher DIFF
+  const brake = Math.abs(ahead)>1.35*DIFF && Math.abs(k.spd)>120*DIFF;
+  return {gas, brake, steer, hop:false, boost:(k.meter>0.7/DIFF && Math.abs(ahead)<0.35*DIFF)};
 }
 
 /* ---- lap / progress ---- */
@@ -1504,7 +1508,9 @@ function render(){
     if(p<1||p>BH-HORIZON+70) continue;
     const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
     if(sxp<-50||sxp>BW+50) continue;
-    sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.5,4,60), depth, kind:'tobj', ttype:o.type});
+    // scale is applied inside the clamp — clamping first would give a distant
+    // spike a 4px floor multiplied up to something enormous
+    sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.5*tobjScale(o.type),3,300), depth, kind:'tobj', ttype:o.type});
   }
   if(TH.zombies) for(const z of ZOMB){ if(z.dead>0) continue;
     const relx=z.x-camx, rely=z.y-camy, depth=relx*cf+rely*sf;
@@ -1587,19 +1593,29 @@ function render(){
 }
 
 const STARS=[]; for(let i=0;i<64;i++) STARS.push({x:Math.random()*BW*2, y:Math.random()*HORIZON*0.82, s:Math.random()<0.28?2:1});
+/* Everything up here is effectively at infinity, so it must pan at exactly the
+   same rate as your heading — that's what makes it sit still in the world while
+   you turn under it. Previously the ridgeline panned at 0.55x (drifting), and
+   the moon was pinned to a fixed screen position, so it followed you around the
+   whole lap. Both now use the same offset as the stars. */
 function drawSkyDressing(ang){
   const off=ang*92;                         // parallax pan by heading
   bctx.fillStyle='#cdc6dc';
   for(const st of STARS){ let x=((st.x-off)%(BW*2)+BW*2)%(BW*2); if(x<BW) bctx.fillRect(x|0,st.y|0,st.s,st.s); }
-  // jagged dead skyline hugging the horizon
+  // jagged dead skyline hugging the horizon — locked to the same bearing
   bctx.fillStyle='#050308';
   bctx.beginPath(); bctx.moveTo(0,HORIZON+1);
-  for(let x=0;x<=BW;x+=6){ const w=x+off*0.55; const h=HORIZON-5-(Math.sin(w*0.05)*4+Math.sin(w*0.14)*3+Math.sin(w*0.31)*2+4); bctx.lineTo(x,h); }
+  for(let x=0;x<=BW;x+=6){ const w=x+off; const h=HORIZON-5-(Math.sin(w*0.05)*4+Math.sin(w*0.14)*3+Math.sin(w*0.31)*2+4); bctx.lineTo(x,h); }
   bctx.lineTo(BW,HORIZON+1); bctx.closePath(); bctx.fill();
-  drawMoon();
+  drawMoon(off);
 }
-function drawMoon(){
-  const mx=BW*0.72, my=HORIZON*0.4, r=13;
+function drawMoon(off){
+  const period=BW*2;
+  // wrap the moon's screen position the same way the stars wrap, so it hangs at
+  // one fixed compass bearing and slides off-screen when you turn away from it
+  const mx=((BW*0.72-(off||0))%period+period)%period;
+  if(mx<-40||mx>BW+40) return;
+  const my=HORIZON*0.4, r=13;
   bctx.save();
   const g=bctx.createRadialGradient(mx,my,2,mx,my,r*2.2);
   g.addColorStop(0,'rgba('+TH.col.glow+',.9)'); g.addColorStop(.4,'rgba('+TH.col.glow+',.4)'); g.addColorStop(1,'rgba('+TH.col.glow+',0)');
@@ -1709,6 +1725,8 @@ const MENUS={
   options:{ kick:'', title:'OPTIONS', items:[
     {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
     {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); paintMenuSel(); }},
+    {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn;
+      document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn; document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
@@ -1876,7 +1894,7 @@ function finish(){
   // reset every kart back to the start grid and kill all motion/boost state
   placeGrid();
   PROJ=[]; EXPL=[];
-  [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0; });
+  [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0;k._wasAir=0; });
   buildTrackObjects(); buildZombies(); buildStalker();
 }
 
@@ -1894,8 +1912,8 @@ function loop(now){
     for(const r of rivals){ const gap=player.progress-r.progress;
       // Behind you they lean on it hard so they can close up and apply pressure;
       // ahead of you they only ease off a little, so a lead still has to be earned.
-      r.rubber = gap>=0 ? clamp(1+gap*0.020, 1, 1.10)    // behind you → real chase
-                        : clamp(1+gap*0.030, 0.90, 1); } // ahead of you → slight ease
+      r.rubber = gap>=0 ? clamp(1+gap*0.022, 1, 1.11)    // behind you → real chase
+                        : clamp(1+gap*0.030, 0.91, 1); } // ahead of you → slight ease
     for(const r of rivals) updateKart(r,dt,aiInput(r));
     if(keys.fire||touchFire) fireWeapon(player);
     for(const r of rivals) aiMaybeFire(r);
@@ -1913,15 +1931,22 @@ function loop(now){
       const sf=clamp(player.ground/MAXS,0,1.45);
       let amt=Math.pow(Math.max(0,sf-0.45)/0.55,2)*5.2;
       if(player.boost>0) amt+=3.4;                 // nitrous slams it
+      if(player.air>0) amt*=0.5;                   // wheels off the deck — the rattle drops away
       if(amt>0.4) addShake(Math.min(amt,9));
     }
+    // ---- touchdown: the rattle returning is not enough, the landing needs weight ----
+    if(player._wasAir>0 && player.air<=0 && player.dead<=0){
+      addShake(13+Math.min(9,player.ground/MAXS*8));
+      beep(90,.14);
+    }
+    player._wasAir=player.air;
     // place
     const place=1+rivals.filter(r=>r.progress>player.progress).length;
     document.getElementById('hPos').innerHTML=place+'<small>PLACE</small>';
     // Rivals now run the same 125 car as you, so this multiplier has to be far
     // gentler than it was — at the old +15% a leading player could never break
     // away, because the pack would out-run them on raw top speed alone.
-    aiComp = place===1 ? 1.06 : place<=3 ? 1.02 : 1;
+    aiComp = place===1 ? 1.09 : place<=3 ? 1.05 : 1.02;
     const tb=document.getElementById('turbo'); document.getElementById('turboFill').style.width=(player.meter*100).toFixed(0)+'%';
     tb.classList.toggle('full', player.meter>=0.995); tb.classList.toggle('boosting', player.boost>0);
     tb.classList.toggle('cooling', player.cool>0);
@@ -1958,6 +1983,21 @@ function fireWeapon(k){
 /* ---- TRACK OBJECTS: power-up boxes, ramps (jumps), spike pits (death traps) ---- */
 let TOBJ=[];
 const POWERS=['rapid','spread','shield','nitro'];
+/* Track objects were billboards with an arbitrary sprite scale and a hitbox
+   picked by feel, so what you saw and what you hit were unrelated. These are
+   now specified in WORLD UNITS and both the sprite and the hitbox derive from
+   the same number, so a ramp you can see is a ramp you can aim at — or miss.
+   A sprite of scale S renders 4.025*S world units wide (the depth terms in the
+   projection cancel), hence WORLD_PER_SCALE below. */
+const WORLD_PER_SCALE=4.025;
+const TOBJ_SIZE={            // width = how wide it really is, in world units
+  box:  {width:28},          // generous enough that pickups never feel fiddly
+  ramp: {width:46},          // ~44% of the narrow road: usable, and dodgeable
+  spike:{width:58}           // a proper trap — wide enough to force a line change
+};
+function tobjScale(type){ return (TOBJ_SIZE[type]?TOBJ_SIZE[type].width:16)/WORLD_PER_SCALE; }
+function tobjHit(type){      // contact = own half-width + the kart's ~2u half-width
+  return (TOBJ_SIZE[type]?TOBJ_SIZE[type].width:16)/2 + 2; }
 function buildTrackObjects(){
   TOBJ=[]; const N=CENTER.length;
   const put=(i,type,off)=>{ const a=CENTER[i%N], b=CENTER[(i+1)%N];
@@ -1981,9 +2021,11 @@ function updateTrackObjects(dt){
     for(const k of [player,...rivals]){
       if(k.dead>0) continue;
       const d=Math.hypot(k.x-o.x,k.y-o.y);
-      if(o.type==='box'){ if(d<26){ grantPower(k); o.cool=12; break; } }
-      else if(o.type==='ramp'){ if(d<30 && k.air<=0 && Math.abs(k.spd)>130){ k.air=0.72; k.vx*=1.12; k.vy*=1.12; if(k.isPlayer)beep(500,.12); } }
-      else if(o.type==='spike'){ if(d<20 && k.air<=0 && k.inv<=0){ damageKart(k,45,null); k.inv=0.6; if(k.isPlayer)beep(120,.12); } }
+      if(o.type==='box'){ if(d<tobjHit('box')){ grantPower(k); o.cool=12; break; } }
+      else if(o.type==='ramp'){ if(d<tobjHit('ramp') && k.air<=0 && Math.abs(k.spd)>130){
+        k.air=0.72; k.vx*=1.12; k.vy*=1.12; if(k.isPlayer)beep(500,.12); } }
+      else if(o.type==='spike'){ if(d<tobjHit('spike') && k.air<=0 && k.inv<=0){
+        damageKart(k,50,null); k.inv=0.6; if(k.isPlayer)beep(120,.12); } }
     }
   }
 }
@@ -1998,12 +2040,34 @@ function drawTrackObj(c,x,y,size,type){
     c.fillStyle='#08070b'; c.font='bold '+(s*0.7)+'px sans-serif'; c.textAlign='center'; c.textBaseline='middle';
     c.fillText('?',0,s*0.05);
   } else if(type==='ramp'){
-    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.5,s*0.14,0,0,7); c.fill();
-    c.fillStyle='#c8a84a'; c.beginPath(); c.moveTo(-s*0.5,0); c.lineTo(s*0.5,0); c.lineTo(s*0.5,-s*0.55); c.closePath(); c.fill();
-    c.fillStyle='#e01e28'; for(let i=-2;i<=2;i++) c.fillRect(i*s*0.18,-s*0.12,s*0.08,s*0.12);
+    // Drawn head-on as a rising deck, not a sideways wedge: wide at the near
+    // edge, narrower at the lip, so it reads as something you drive UP.
+    c.fillStyle='rgba(0,0,0,.45)'; c.beginPath(); c.ellipse(0,0,s*0.5,s*0.1,0,0,7); c.fill();
+    const topW=s*0.34, topY=-s*0.30;
+    c.fillStyle='#3a3020';                                     // side cheeks
+    c.beginPath(); c.moveTo(-s*0.5,0); c.lineTo(-topW,topY); c.lineTo(-topW,topY+s*0.05); c.lineTo(-s*0.5,s*0.03); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(s*0.5,0); c.lineTo(topW,topY); c.lineTo(topW,topY+s*0.05); c.lineTo(s*0.5,s*0.03); c.closePath(); c.fill();
+    const g=c.createLinearGradient(0,0,0,topY);                // the deck surface
+    g.addColorStop(0,'#d8b854'); g.addColorStop(1,'#8f7530');
+    c.fillStyle=g; c.beginPath();
+    c.moveTo(-s*0.5,0); c.lineTo(s*0.5,0); c.lineTo(topW,topY); c.lineTo(-topW,topY); c.closePath(); c.fill();
+    c.fillStyle='#e01e28';                                     // chevrons pointing up the ramp
+    for(let r=0;r<3;r++){ const t=r/3, y=-s*0.30*t, hw=s*0.5+(topW-s*0.5)*t;
+      for(let i=-1;i<=1;i++){ const cx2=i*hw*0.55;
+        c.beginPath(); c.moveTo(cx2,y-s*0.05); c.lineTo(cx2-hw*0.13,y); c.lineTo(cx2+hw*0.13,y); c.closePath(); c.fill(); } }
+    c.fillStyle='#f5e08a'; c.fillRect(-topW,topY-s*0.025,topW*2,s*0.03);   // lip highlight
   } else {
-    c.fillStyle='#0d0a12'; c.beginPath(); c.ellipse(0,0,s*0.5,s*0.18,0,0,7); c.fill();
-    c.fillStyle='#c9c2b0'; for(let i=-2;i<=2;i++){ c.beginPath(); c.moveTo(i*s*0.2-s*0.08,0); c.lineTo(i*s*0.2,-s*0.5); c.lineTo(i*s*0.2+s*0.08,0); c.closePath(); c.fill(); }
+    // Spike strip: a wide bar of teeth, so it reads as a trap spanning ground
+    c.fillStyle='#0d0a12'; c.beginPath(); c.ellipse(0,0,s*0.5,s*0.1,0,0,7); c.fill();
+    c.fillStyle='#241c14'; c.fillRect(-s*0.5,-s*0.06,s,s*0.08);            // the base rail
+    const n=9;
+    for(let i=0;i<n;i++){
+      const px=-s*0.5+ (i+0.5)*(s/n), h=s*(0.20+(i%2?0.05:0));
+      c.fillStyle='#c9c2b0'; c.beginPath();
+      c.moveTo(px-s*0.032,-s*0.03); c.lineTo(px,-h); c.lineTo(px+s*0.032,-s*0.03); c.closePath(); c.fill();
+      c.fillStyle='rgba(120,18,18,.65)'; c.beginPath();                     // stained tips
+      c.moveTo(px-s*0.012,-h*0.72); c.lineTo(px,-h); c.lineTo(px+s*0.012,-h*0.72); c.closePath(); c.fill();
+    }
   }
   c.restore();
 }
@@ -2092,38 +2156,80 @@ function kartCollisions(){
 /* ================================================================
    INPUT
    ================================================================ */
-const KEY={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'hop',ShiftLeft:'boost',ShiftRight:'boost',KeyF:'fire',ControlLeft:'fire',ControlRight:'fire'};
+/* ================================================================
+   INPUT — resolved from e.key first, e.code second, keyCode last.
+   Second Life's viewer injects key events into its CEF browser with the
+   virtual/character key filled in but NOT the physical scancode, so
+   e.code arrives empty in-world and any map keyed on it silently misses
+   every press. Keying on e.key is what makes this work on a prim.
+   ================================================================ */
+const KC={37:'arrowleft',38:'arrowup',39:'arrowright',40:'arrowdown',13:'enter',27:'escape',
+          32:' ',16:'shift',17:'control',87:'w',65:'a',83:'s',68:'d',70:'f'};
+function keyTok(e){
+  let k=(e.key||'').toLowerCase();
+  if(k&&k!=='unidentified') return k;
+  const c=(e.code||'').toLowerCase();          // fall back to the physical code
+  if(c) return c.replace(/^key/,'').replace(/^numpad/,'').replace(/^digit/,'');
+  return KC[e.keyCode||e.which]||'';           // last resort for old event shapes
+}
+// action → every spelling that can mean it, across all three sources
+const ACT={
+  up   :['arrowup','up','w'],
+  down :['arrowdown','down','s'],
+  left :['arrowleft','left','a'],
+  right:['arrowright','right','d'],
+  ok   :['enter','numpadenter',' ','space','spacebar'],
+  back :['escape','esc'],
+  hop  :[' ','space','spacebar'],
+  boost:['shift','shiftleft','shiftright'],
+  fire :['f','control','ctrl','controlleft','controlright']
+};
+function isAct(tok,name){ return ACT[name].indexOf(tok)>=0; }
+// driving controls: token → which flag it sets
+const DRIVE={};
+['up','down','left','right','hop','boost','fire'].forEach(a=>ACT[a].forEach(t=>{ if(!DRIVE[t])DRIVE[t]=a; }));
+
 addEventListener('keydown',e=>{
+  const t=keyTok(e); if(!t) return;
   if(state==='menu'||state==='pause'){
-    if(e.code==='ArrowUp'||e.code==='KeyW'){ e.preventDefault(); menuMove(-1); }
-    else if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); menuMove(1); }
-    else if(e.code==='Enter'||e.code==='NumpadEnter'||e.code==='Space'){ e.preventDefault(); menuActivate(); }
-    else if(e.code==='Escape'){ e.preventDefault(); if(state==='pause') resumeRace(); else if(curMenu!=='main') openMenu('main'); }
+    if(isAct(t,'up')){ e.preventDefault(); menuMove(-1); }
+    else if(isAct(t,'down')){ e.preventDefault(); menuMove(1); }
+    else if(isAct(t,'ok')){ e.preventDefault(); menuActivate(); }
+    else if(isAct(t,'back')){ e.preventDefault(); if(state==='pause') resumeRace(); else if(curMenu!=='main') openMenu('main'); }
     return;
   }
   if(state==='track'){
-    if(e.code==='ArrowLeft'||e.code==='KeyA'){ e.preventDefault(); trkMove(-1); }
-    else if(e.code==='ArrowRight'||e.code==='KeyD'){ e.preventDefault(); trkMove(1); }
-    else if(e.code==='Enter'||e.code==='NumpadEnter'||e.code==='Space'){ e.preventDefault(); confirmTrack(); }
-    else if(e.code==='Escape'){ e.preventDefault(); document.getElementById('trackselect').classList.remove('show'); openMenu('mode'); }
+    if(isAct(t,'left')){ e.preventDefault(); trkMove(-1); }
+    else if(isAct(t,'right')){ e.preventDefault(); trkMove(1); }
+    else if(isAct(t,'ok')){ e.preventDefault(); confirmTrack(); }
+    else if(isAct(t,'back')){ e.preventDefault(); document.getElementById('trackselect').classList.remove('show'); openMenu('mode'); }
     return;
   }
   if(state==='select'){
-    if(e.code==='ArrowLeft'||e.code==='KeyA'){ e.preventDefault(); selMove(-1); }
-    else if(e.code==='ArrowRight'||e.code==='KeyD'){ e.preventDefault(); selMove(1); }
-    else if(e.code==='ArrowUp'||e.code==='KeyW'){ e.preventDefault(); accMove(-1); }
-    else if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); accMove(1); }
-    else if(e.code==='Enter'||e.code==='NumpadEnter'||e.code==='Space'){ e.preventDefault(); confirmSelect(); }
-    else if(e.code==='Escape'){ e.preventDefault(); document.getElementById('charselect').classList.remove('show'); openMenu('mode'); }
+    if(isAct(t,'left')){ e.preventDefault(); selMove(-1); }
+    else if(isAct(t,'right')){ e.preventDefault(); selMove(1); }
+    else if(isAct(t,'up')){ e.preventDefault(); accMove(-1); }
+    else if(isAct(t,'down')){ e.preventDefault(); accMove(1); }
+    else if(isAct(t,'ok')){ e.preventDefault(); confirmSelect(); }
+    else if(isAct(t,'back')){ e.preventDefault(); document.getElementById('charselect').classList.remove('show'); openMenu('mode'); }
     return;
   }
-  if(state==='finish'){ if(e.code==='Enter'||e.code==='NumpadEnter'){ onAgain(); } else if(e.code==='Escape'){ raceMode='race'; openMenu('main'); } return; }
-  if(state==='race'&&e.code==='Escape'){ e.preventDefault(); pauseRace(); return; }
-  const k=KEY[e.code]; if(k){ e.preventDefault(); if(k==='hop')keys.hop=true; else keys[k]=true; }
+  if(state==='finish'){ if(isAct(t,'ok')){ e.preventDefault(); onAgain(); } else if(isAct(t,'back')){ raceMode='race'; openMenu('main'); } return; }
+  if(state==='race'&&isAct(t,'back')){ e.preventDefault(); pauseRace(); return; }
+  const k=DRIVE[t]; if(k){ e.preventDefault(); keysSeen=true; if(k==='hop')keys.hop=true; else keys[k]=true; }
 });
-addEventListener('keyup',e=>{ const k=KEY[e.code]; if(k&&k!=='hop'){ e.preventDefault(); keys[k]=false; } });
-// keep input alive in the iframe: clear stuck keys on focus loss, reclaim focus on touch/click
-addEventListener('blur',()=>{ keys.up=keys.down=keys.left=keys.right=keys.boost=false; });
+addEventListener('keyup',e=>{
+  const t=keyTok(e); if(!t) return;
+  const k=DRIVE[t]; if(k&&k!=='hop'){ e.preventDefault(); keys[k]=false; }
+});
+/* Stuck-key guard. The old version wiped every held key on 'blur', which is
+   fine in a browser tab but hostile in-world, where media focus flickers — one
+   stray blur and your throttle is released mid-corner. Instead we release keys
+   only if nothing has been heard for a while, which fixes genuinely stuck keys
+   without punishing a momentary focus blip. */
+let keysSeen=false;
+addEventListener('blur',()=>{ setTimeout(()=>{ if(!document.hasFocus()){
+  keys.up=keys.down=keys.left=keys.right=keys.boost=false; } },400); });
 DISP.tabIndex=0;
 addEventListener('pointerdown',()=>{ try{window.focus();DISP.focus();}catch(e){} });
 try{ window.focus(); }catch(e){}
@@ -2131,6 +2237,10 @@ document.getElementById('againBtn').onclick=onAgain;
 
 // touch
 if('ontouchstart' in window){ padsOn=true; document.getElementById('touch').classList.add('on'); }
+/* Mouse clicks reach in-world media reliably even when keys don't, so the pads
+   double as the fallback control scheme — switchable from Options. */
+document.getElementById('touch').style.pointerEvents='none';
+['pL','pR','pA','pB','pF'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.pointerEvents='auto'; });
 function bindPad(id,on,off){ const el=document.getElementById(id);
   const s=e=>{e.preventDefault();on();}, f=e=>{e.preventDefault();off();};
   el.addEventListener('touchstart',s); el.addEventListener('touchend',f); el.addEventListener('touchcancel',f);
