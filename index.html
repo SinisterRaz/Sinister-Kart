@@ -277,16 +277,30 @@ const ROADW_DEF = 66, SHOULDER_DEF = 16;
    H5/H7 up so the base shape itself doubles back.
    ================================================================ */
 const TRACKS=[
- { name:'THE DEADLY 500', sub:'SPEEDWAY OF THE DAMNED', harm:[1650,90,0.3,250,0.0,200,0.4,40,0], speedway:true,
+ { name:'THE DEADLY 500', sub:'SPEEDWAY OF THE DAMNED', harm:[1653,10,5.36,241,4.59,241,4.61,149,0.34], speedway:true, twist:[{from:0.098,to:0.288,freq:3,amp:41}],
    col:{void:'#0b0710',wall:'#46434f',face:'#7a1418',road:'#4a4450',shade:'#3c3742',rumA:'#8f0d16',rumB:'#d8ccae',dash:'rgba(200,168,74,.4)',fog:[26,10,24],skyA:'#12060c',skyB:'#2a0a10',moon:'#e0c0c0',glow:'224,30,40'},
    decor:['bleacher','floodlight'], amb:[55,110] },
- { name:"FRANKENSTEIN'S CASTLE", sub:'IT'+'\u2019'+'S ALIVE!', harm:[1500,60,0.0,120,0.5,300,0.2,80,0],
-   col:{void:'#07100b',wall:'#182818',face:'#20361f',road:'#3f4a40',shade:'#313e31',rumA:'#2a5a2a',rumB:'#a8d878',dash:'rgba(139,195,76,.4)',fog:[10,20,10],skyA:'#06120a',skyB:'#123a1a',moon:'#c8f0a0',glow:'139,195,76'},
-   decor:['tower','coil','fence','cross'], amb:[48,73] },
- { name:"DRACULA'S CASTLE", sub:'CHILDREN OF THE NIGHT', harm:[1560,190,1.2,380,0.6,90,0.0,0,0],
+ { name:"FRANKENSTEIN'S CASTLE", sub:'IT'+'\u2019'+'S ALIVE!', harm:[1576,183,2.73,231,1.21,186,2.69,237,3.19], twist:[{from:0.099,to:0.323,freq:3,amp:33},{from:0.421,to:0.581,freq:3,amp:40}],
+   // 1931 palette: cold blue-white electric light, warm only from torches and
+   // windows. No greens or purples — that reads as 70s Hammer, not Universal.
+   col:{void:'#080b12',wall:'#1a2130',face:'#232c3d',road:'#3d4450',shade:'#2f3642',rumA:'#2a3a58',rumB:'#c8d8f0',dash:'rgba(180,210,240,.35)',fog:[12,16,24],skyA:'#070a12',skyB:'#18243a',moon:'#dce8ff',glow:'150,200,255'},
+   decor:['tower','coil','fence','cross'], amb:[48,73],
+   castle:true, arcs:true, bpm:172,
+   // The interior spans 0.40-0.60 because the verified twist band at 0.421-0.581
+   // already lives there — so the tunnel winds through the castle without
+   // touching geometry that was measured as drivable.
+   zones:[{to:0.18,kind:'village'},{to:0.40,kind:'approach'},{to:0.60,kind:'castle'},
+          {to:0.74,kind:'battlement'},{to:1.00,kind:'descent'}],
+   // grip per surface — worn flagstone inside, wet stone up top
+   zoneGrip:{village:1.0, approach:1.0, castle:0.66, battlement:0.78, descent:0.92},
+   noRamp:['castle'],            // enclosed: nothing to jump into but the vaulting
+   mob:true,                     // villagers spill onto the road with torches
+   signs:{welcome:['THE HOUSE OF','FRANKENSTEIN'], lake:['GOLDSTADT','TURN BACK'], camp:['',''] },
+   landmarks:[{at:0.995,type:'archwelcome'},{at:0.165,type:'signlake'}] },
+ { name:"DRACULA'S CASTLE", sub:'CHILDREN OF THE NIGHT', harm:[1482,24,5.75,45,2.43,181,5.08,207,0.94], twist:[{from:0.084,to:0.26,freq:3,amp:32},{from:0.337,to:0.544,freq:3,amp:38}],
    col:{void:'#0a0510',wall:'#1e1428',face:'#3a1c4a',road:'#3e3548',shade:'#2f2838',rumA:'#6a1030',rumB:'#c0a0d0',dash:'rgba(180,108,255,.4)',fog:[18,10,26],skyA:'#0c0518',skyB:'#2a0f38',moon:'#f0d0e8',glow:'180,108,255'},
    decor:['spire','bat','grave','cross'], amb:[41,62] },
- { name:'CRYSTAL LAKE PASS', sub:'CAMP BLOOD', harm:[1480,230,0.5,150,0.0,190,1.0,170,0.3],
+ { name:'CRYSTAL LAKE PASS', sub:'CAMP BLOOD', harm:[1438,204,3.77,194,2.34,132,0.34,257,2.29],
    col:{void:'#050f10',wall:'#12242a',face:'#1a3a3a',road:'#3a4448',shade:'#2e3a3e',rumA:'#0e5a5a',rumB:'#a0d0c8',dash:'rgba(0,229,255,.3)',fog:[8,22,24],skyA:'#04141a',skyB:'#0e3038',moon:'#d0f0f0',glow:'0,229,255'},
    decor:['pine','cabin','sign','dock'], amb:[52,78],
    // the lap is a tour: deep woods → the dock out over the lake → woods → the camp itself
@@ -299,10 +313,10 @@ const TRACKS=[
    signs:{welcome:['WELCOME TO','CAMP CRYSTAL LAKE'], lake:['CRYSTAL LAKE','NO SWIMMING AFTER DARK'], camp:['CAMP CRYSTAL LAKE','EST. 1935']},
    landmarks:[{at:0.995,type:'archwelcome'},{at:0.238,type:'signlake'},{at:0.668,type:'signcamp'}],
    lake:{void:'#04191c'} },
- { name:'RACCOON CITY RACEWAY', sub:'BIOHAZARD ZONE', harm:[1560,40,0.0,100,0.3,80,0.0,290,0.2],
+ { name:'RACCOON CITY RACEWAY', sub:'BIOHAZARD ZONE', harm:[1555,191,0.47,174,2.37,215,2.94,291,3.17], twist:[{from:0.067,to:0.266,freq:3,amp:39},{from:0.355,to:0.524,freq:3,amp:34}],
    col:{void:'#0a0d06',wall:'#1c2410',face:'#2a3818',road:'#42463c',shade:'#34382e',rumA:'#5a7a10',rumB:'#c8c090',dash:'rgba(155,191,58,.4)',fog:[16,20,8],skyA:'#0c1006',skyB:'#28321a',moon:'#e0e0a0',glow:'155,191,58'},
    decor:['streetlight','wreck','biohazard','fence'], zombies:true, amb:[44,66] },
- { name:'AMITYVILLE RACEWAY', sub:'GET OUT', harm:[1500,170,2.0,260,1.0,230,0.5,50,0],
+ { name:'AMITYVILLE RACEWAY', sub:'GET OUT', harm:[1456,206,6.15,197,1.26,176,2.55,144,6.24], twist:[{from:0.06,to:0.251,freq:3,amp:39},{from:0.352,to:0.533,freq:3,amp:39}],
    col:{void:'#0f0a06',wall:'#2a1e10',face:'#3a2818',road:'#4a4238',shade:'#3a342c',rumA:'#8a5010',rumB:'#d8c090',dash:'rgba(255,170,60,.3)',fog:[26,16,8],skyA:'#160e06',skyB:'#3a2410',moon:'#f0d090',glow:'255,170,60'},
    decor:['house','picket','tree','sign'], amb:[58,87] },
 ];
@@ -367,6 +381,7 @@ function buildTrack(){
   drawRumble();
   paintDock();
   paintCamp();
+  paintCastle();
   tctx.setLineDash([16,22]); tctx.lineWidth=3; tctx.strokeStyle=C.dash;
   tctx.beginPath(); loopPath(); tctx.stroke(); tctx.setLineDash([]);
   drawStartLine();
@@ -533,6 +548,36 @@ function paintCamp(){
     tctx.lineTo(f.a.x-f.nx*ROADW, f.a.y-f.ny*ROADW); tctx.stroke();
   }
 }
+/* Stone flooring through the laboratory, wet flagstone on the battlements.
+   Both are also grip changes, so the surface you can see is the surface you
+   feel — see zoneGrip in the track config. */
+function paintCastle(){
+  if(!TH.castle) return;
+  const N=CENTER.length;
+  const run=(kind,base,inner,seam)=>{
+    const R=arcRange(kind); if(!R) return;
+    const i0=Math.floor(R.from*N), i1=Math.ceil(R.to*N);
+    const stroke=(w,col)=>{ tctx.lineWidth=w; tctx.strokeStyle=col; tctx.lineCap='butt';
+      tctx.beginPath(); tctx.moveTo(CENTER[i0%N].x,CENTER[i0%N].y);
+      for(let i=i0+1;i<=i1;i++) tctx.lineTo(CENTER[i%N].x,CENTER[i%N].y);
+      tctx.stroke(); };
+    stroke(ROADW*2, base); stroke(ROADW*2-10, inner);
+    tctx.strokeStyle=seam; tctx.lineWidth=2;
+    for(let i=i0;i<i1;i+=3){ const f=frameAt(i,N);
+      tctx.beginPath();
+      tctx.moveTo(f.a.x+f.nx*ROADW, f.a.y+f.ny*ROADW);
+      tctx.lineTo(f.a.x-f.nx*ROADW, f.a.y-f.ny*ROADW); tctx.stroke(); }
+    for(const off of [-30,0,30]){
+      tctx.beginPath();
+      for(let i=i0;i<=i1;i++){ const f=frameAt(i,N);
+        const px=f.a.x+f.nx*off, py=f.a.y+f.ny*off;
+        if(i===i0) tctx.moveTo(px,py); else tctx.lineTo(px,py); }
+      tctx.stroke();
+    }
+  };
+  run('castle','#2b3242','#343d50','rgba(10,14,22,.75)');
+  run('battlement','#333c4c','#3d475a','rgba(140,175,215,.16)');
+}
 function drawStartLine(){
   const a=CENTER[0], b=CENTER[1];
   const ang=Math.atan2(b.y-a.y,b.x-a.x);
@@ -608,6 +653,7 @@ function buildZonedDecor(N){
 
     if(kind==='camp'){ continue; }   // camp is hand-laid below, not scattered
 
+    if(kind!=='woods') continue;   // castle zones are laid by buildCastle, not here
     // ---- WOODS: the treeline starts exactly at the wall, so what stops you is
     //      what you can see. Layers overlap into a continuous mass you can't
     //      see through — occlusion comes from big near trunks, not sprite count. ----
@@ -632,6 +678,7 @@ function buildZonedDecor(N){
     }
   }
   if(TH.camp) buildCamp(N);
+  if(TH.castle) buildCastle(N);
   buildLandmarks(N);
 }
 /* ================================================================
@@ -645,6 +692,91 @@ function frameAt(i,N){                       // position + road normal at a node
   const a=CENTER[i%N], b=CENTER[(i+1)%N];
   const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
   return {a,nx:-dy/l,ny:dx/l,dx,dy};
+}
+/* FRANKENSTEIN — filled by repetition, not variety. Each zone has one hero
+   shape stacked in depth bands; the silhouette alone should tell you where you
+   are (jagged roofs / vertical buttresses / horizontal machine banks /
+   crenellated notches / bare spikes). */
+function buildCastle(N){
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  const R=arcRange('castle');
+  if(R){
+    const K=BW/(2*HFOV*0.92*0.72*A_DIST);
+    // The facade is one enormous billboard on the racing line, planted a little
+    // way BEFORE the entrance so it rises out of the horizon as you approach
+    // and you drive straight at it. Sized in world units like the start arch.
+    const iEnt=nodeAt(R.from,N);
+    const fEnt=frameAt(iEnt,N);
+    DECOR.push({x:fEnt.a.x, y:fEnt.a.y, type:'castlefar', s:520*K});
+    // thresholds at both ends so entering and leaving read clearly
+    for(const at of [R.from+0.004, R.to-0.004]){
+      const f=frameAt(nodeAt(at,N),N);
+      // K is derived for posts drawn at ±0.92·size; this sprite draws them at
+      // ±0.62, so without the correction the posts land ON the tarmac.
+      DECOR.push({x:f.a.x, y:f.a.y, type:'gatearch', s:(ROADW+26)*K*(0.92/0.62)});
+    }
+  }
+  const put=(i,side,off,type,sc)=>{
+    const f=frameAt(i,N), o=side*off;
+    const x=f.a.x+f.nx*o, y=f.a.y+f.ny*o;
+    if(x<30||x>WORLD-30||y<30||y>WORLD-30) return;
+    DECOR.push({x,y,type,s:sc});
+  };
+  // The creature is out on the descent near the end of the lap, glimpsed
+  // between the rocks — and the doctor is still out looking for him.
+  put(Math.floor(N*0.86), 1,WALLR+rnd(70,110),'creature',2.7);
+  put(Math.floor(N*0.905),-1,WALLR+rnd(60,95),'doctor',1.8);
+  put(Math.floor(N*0.912),-1,WALLR+rnd(58,92),'assistant',1.6);
+  for(let i=0;i<N;i+=2){
+    const z=zoneAt(i/N);
+    for(const side of [1,-1]){
+      if(z==='village'){
+        // A street, not a scatter: front rank sits on a consistent building
+        // line so the road reads as running between two terraces, with the
+        // mix weighted to cottages and the bigger buildings as punctuation.
+        if(i%4===0){
+          const r=Math.random();
+          const kind = r<0.52?'cottage' : r<0.70?'townhouse' : r<0.82?'workshop' : r<0.92?'inn' : 'stall';
+          const sc   = kind==='inn'?rnd(2.0,2.5) : kind==='townhouse'?rnd(1.9,2.6)
+                     : kind==='workshop'?rnd(1.6,2.1) : kind==='stall'?rnd(1.1,1.5) : rnd(1.5,2.2);
+          put(i,side,WALLR+rnd(12,26),kind,sc);
+        }
+        if(i%4===2 && Math.random()<0.8){           // second rank set back behind
+          const r=Math.random();
+          put(i,side,WALLR+rnd(85,175), r<0.6?'cottage':r<0.85?'townhouse':'workshop', rnd(2.2,3.4));
+        }
+        if(i%17===2) put(i,side,WALLR+rnd(20,50),'well',rnd(1.1,1.5));
+        if(i%13===5) put(i,side,WALLR+rnd(14,44),'cart',rnd(1.1,1.6));
+        if(Math.random()<0.34) put(i,side,WALLR+rnd(2,14),'torchmob',rnd(0.9,1.3));
+      } else if(z==='approach'){
+        if(Math.random()<0.80) put(i,side,WALLR+rnd(10,46),'buttress',rnd(1.6,2.6));
+        // buttresses grow as you climb, so the castle looms without ever being drawn
+        const climb=(i/N-0.18)/0.22;
+        if(Math.random()<0.60) put(i,side,WALLR+rnd(70,190),'buttress',rnd(2.4,3.2)+climb*1.6);
+        if(i%18===0) put(i,side,WALLR+rnd(6,20),'ravenpost',rnd(1.0,1.5));
+      } else if(z==='castle'){
+        // Interior: piers hard against the wall so the tunnel feels enclosed,
+        // vaulting overhead, and the gothic dressing between them.
+        put(i,side,WALLR+2,'column',1.9);
+        if(i%4===0) put(i,side,WALLR+1,'vault',2.1);
+        if(i%9===1) put(i,side,WALLR+14,'stainedglass',1.8);
+        if(i%9===4) put(i,side,WALLR+12,'tapestry',1.5);
+        if(i%13===3) put(i,side,WALLR+10,'armour',1.3);
+        if(i%7===2) put(i,side,WALLR+1,'chandelier',1.7);
+        if(i%11===5) put(i,side,WALLR+26,'labbank',1.5);
+        if(i%17===8) put(i,side,WALLR+34,'coilrig',1.8);
+      } else if(z==='battlement'){
+        if(Math.random()<0.70) put(i,side,WALLR+rnd(4,26),'crenel',rnd(1.4,2.0));
+        if(i%22===0) put(i,side,WALLR+rnd(8,30),'gargoyle',rnd(1.2,1.7));
+      } else {
+        // The creature is out here somewhere on the descent — glimpsed between
+        // the rocks near the end of the lap, never on the racing line.
+        if(Math.random()<0.75) put(i,side,WALLR+rnd(6,44),'rockspire',rnd(1.2,2.4));
+        if(Math.random()<0.50) put(i,side,WALLR+rnd(70,210),'rockspire',rnd(2.2,3.8));
+        if(Math.random()<0.28) put(i,side,WALLR+rnd(20,80),'deadtree',rnd(1.4,2.6));
+      }
+    }
+  }
 }
 function buildCamp(N){
   const R=arcRange('camp'); if(!R) return;
@@ -850,12 +982,18 @@ function fitText(c,txt,cx,cy,maxW,px,font){
 }
 function drawDecor(c,x,y,size,type){
   const s=size, G=TH.col.glow; c.save(); c.translate(x,y);
+  // Road-spanning sprites must not get the default shadow: one ellipse scaled to
+  // them lands as a black slab straight across the tarmac.
   if(type==='archwelcome'){
-    // road-wide sprite: one shadow ellipse scaled to it would be a black slab
-    // across the tarmac. Shadow the two posts instead.
     c.fillStyle='rgba(0,0,0,.4)';
     c.beginPath(); c.ellipse(-s*0.92,0,s*0.05,s*0.014,0,0,7); c.fill();
     c.beginPath(); c.ellipse( s*0.92,0,s*0.05,s*0.014,0,0,7); c.fill();
+  } else if(type==='gatearch'){
+    c.fillStyle='rgba(0,0,0,.4)';
+    c.beginPath(); c.ellipse(-s*0.51,0,s*0.13,s*0.028,0,0,7); c.fill();
+    c.beginPath(); c.ellipse( s*0.51,0,s*0.13,s*0.028,0,0,7); c.fill();
+  } else if(type==='castlefar'){
+    /* no ground ellipse — it is a building, and it gets its own plinth below */
   } else {
     c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.4,s*0.1,0,0,7); c.fill();
   }
@@ -1005,6 +1143,313 @@ function drawDecor(c,x,y,size,type){
     c.fillStyle='#1a1208'; c.fillRect(-s*0.72,-s*1.05,s*1.44,s*0.24);
     c.fillStyle='rgba('+G+',.75)';
     for(let i=0;i<5;i++) c.fillRect(-s*0.56+i*s*0.24,-s*0.99,s*0.14,s*0.12);
+  } else if(type==='castlefar'){
+    // The whole facade as one billboard, sized in world units so it scales
+    // correctly with distance: you pick it up on the horizon, it grows for
+    // several seconds, then you drive through the arch at its base.
+    const W=s, H=s*1.15;
+    c.fillStyle='#0c111b';                                    // the mass, read as one silhouette
+    c.fillRect(-W*0.62,-H*0.72,W*1.24,H*0.72);
+    c.fillStyle='#10161f';
+    for(let i=0;i<5;i++){ const tx=(-0.52+i*0.26)*W, tw=W*0.13, th=H*(i%2?1.02:0.88);
+      c.fillRect(tx-tw/2,-th,tw,th-H*0.66);
+      c.beginPath(); c.moveTo(tx-tw*0.62,-th); c.lineTo(tx+tw*0.62,-th);
+      c.lineTo(tx,-th-H*0.16); c.closePath(); c.fill(); }
+    c.fillStyle='#0c111b';                                    // crenellations along the curtain
+    for(let i=0;i<11;i++) c.fillRect(-W*0.60+i*W*0.113,-H*0.78,W*0.055,H*0.07);
+    c.fillStyle='#141c28';                                    // buttress ribs
+    for(let i=0;i<6;i++) c.fillRect(-W*0.5+i*W*0.2,-H*0.70,W*0.035,H*0.70);
+    const rg=c.createRadialGradient(0,-H*0.50,1,0,-H*0.50,W*0.11);
+    rg.addColorStop(0,'rgba(190,225,255,.55)'); rg.addColorStop(1,'rgba(150,200,255,0)');
+    c.fillStyle=rg; c.beginPath(); c.arc(0,-H*0.50,W*0.11,0,7); c.fill();
+    c.fillStyle='rgba(190,225,255,.5)';                       // rose window
+    c.beginPath(); c.arc(0,-H*0.50,W*0.05,0,7); c.fill();
+    c.fillStyle='rgba(255,186,92,.55)';                       // lit slit windows
+    for(let i=0;i<9;i++){ if(i%3===1) continue;
+      c.fillRect(-W*0.52+i*W*0.13,-H*0.34,W*0.022,H*0.07); }
+    // Plinth: the facade needs to meet the ground or it reads as a flat cut-out
+    // hanging in the air. A darker base band plus a soft contact shadow does it.
+    c.fillStyle='#080d15'; c.fillRect(-W*0.66,-H*0.10,W*1.32,H*0.10);
+    /* No contact ellipse: at this sprite's scale it lands as a black slab
+       straight across the tarmac. The plinth above already grounds it. */
+    // Opening drawn as three nested rings so the wall reads as thick, not as a
+    // hole cut in paper — this is what was making the perspective feel flat.
+    const mouth=(sc,col)=>{ c.fillStyle=col; c.beginPath();
+      c.moveTo(-W*0.13*sc,0); c.lineTo(-W*0.13*sc,-H*0.20*sc);
+      c.quadraticCurveTo(0,-H*0.34*sc, W*0.13*sc,-H*0.20*sc);
+      c.lineTo(W*0.13*sc,0); c.closePath(); c.fill(); };
+    mouth(1.00,'#161e2b');                                    // outer jamb, catches light
+    mouth(0.90,'#0c121b');                                    // recess
+    mouth(0.78,'#04060a');                                    // the dark you drive into
+    c.strokeStyle='#232e3e'; c.lineWidth=Math.max(1,W*0.010);
+    c.beginPath();
+    c.moveTo(-W*0.13,0); c.lineTo(-W*0.13,-H*0.20);
+    c.quadraticCurveTo(0,-H*0.34, W*0.13,-H*0.20); c.lineTo(W*0.13,0); c.stroke();
+  } else if(type==='gatearch'){                    // the threshold you pass under
+    /* The width is fixed by having to clear the road, but the height must NOT
+       scale with it — at the old proportions this stood ~210 world units tall
+       over a 132-unit-wide road, which read as a cathedral. V flattens the
+       vertical without touching the span. */
+    const V=0.34;
+    c.fillStyle='#141b26';
+    c.fillRect(-s*0.62,-s*1.05*V,s*0.22,s*1.05*V);
+    c.fillRect( s*0.40,-s*1.05*V,s*0.22,s*1.05*V);
+    // two spans, the inner darker and set higher, so the arch has real thickness
+    c.fillStyle='#0e141d';
+    c.beginPath(); c.moveTo(-s*0.62,-s*0.86*V);
+    c.quadraticCurveTo(0,-s*1.52*V,s*0.62,-s*0.86*V);
+    c.lineTo(s*0.62,-s*1.20*V); c.lineTo(-s*0.62,-s*1.20*V); c.closePath(); c.fill();
+    c.fillStyle='#070b12';
+    c.beginPath(); c.moveTo(-s*0.50,-s*0.90*V);
+    c.quadraticCurveTo(0,-s*1.42*V,s*0.50,-s*0.90*V);
+    c.lineTo(s*0.50,-s*1.06*V); c.lineTo(-s*0.50,-s*1.06*V); c.closePath(); c.fill();
+    c.fillStyle='#1d2836';                                    // portcullis teeth
+    for(let i=0;i<7;i++) c.fillRect(-s*0.40+i*s*0.13,-s*1.14*V,s*0.035,s*0.20*V);
+    c.fillStyle='rgba(255,186,92,.7)';                        // brazier either side
+    c.beginPath(); c.arc(-s*0.51,-s*1.16*V,s*0.05*V,0,7); c.arc(s*0.51,-s*1.16*V,s*0.05*V,0,7); c.fill();
+  } else if(type==='column'){                      // interior: clustered gothic pier
+    c.fillStyle='#1b2331';
+    c.fillRect(-s*0.16,-s*1.18,s*0.32,s*1.18);
+    c.fillStyle='#232d3e';
+    c.fillRect(-s*0.21,-s*1.18,s*0.06,s*1.18); c.fillRect(s*0.15,-s*1.18,s*0.06,s*1.18);
+    c.fillStyle='#2b3648';
+    c.fillRect(-s*0.24,-s*1.30,s*0.48,s*0.13);                // capital
+    c.fillRect(-s*0.22,-s*0.09,s*0.44,s*0.09);                // base
+  } else if(type==='vault'){                       // pointed arch springing overhead
+    c.strokeStyle='#1f2a39'; c.lineWidth=Math.max(1,s*0.07);
+    c.beginPath(); c.moveTo(-s*0.66,-s*0.72);
+    c.quadraticCurveTo(-s*0.30,-s*1.34,0,-s*1.40);
+    c.quadraticCurveTo(s*0.30,-s*1.34,s*0.66,-s*0.72); c.stroke();
+    c.strokeStyle='#141c28'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(0,-s*1.40); c.lineTo(0,-s*1.14); c.stroke();
+  } else if(type==='stainedglass'){
+    c.fillStyle='#0d1420'; c.beginPath();
+    c.moveTo(-s*0.20,0); c.lineTo(-s*0.20,-s*0.58);
+    c.quadraticCurveTo(0,-s*0.94,s*0.20,-s*0.58); c.lineTo(s*0.20,0); c.closePath(); c.fill();
+    const cols=['rgba(200,70,70,.55)','rgba(90,140,220,.55)','rgba(230,200,90,.5)','rgba(80,160,140,.5)'];
+    for(let i=0;i<4;i++){ c.fillStyle=cols[i];
+      c.fillRect(-s*0.16,-s*0.54+i*s*0.13,s*0.32,s*0.10); }
+    const g=c.createRadialGradient(0,-s*0.42,1,0,-s*0.42,s*0.5);
+    g.addColorStop(0,'rgba(180,210,255,.22)'); g.addColorStop(1,'rgba(180,210,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(0,-s*0.42,s*0.5,0,7); c.fill();
+  } else if(type==='tapestry'){
+    c.fillStyle='#2a1c22'; c.fillRect(-s*0.22,-s*0.92,s*0.44,s*0.80);
+    c.fillStyle='#3b2730';
+    c.beginPath(); c.moveTo(-s*0.22,-s*0.12); c.lineTo(0,-s*0.02); c.lineTo(s*0.22,-s*0.12); c.closePath(); c.fill();
+    c.fillStyle='rgba(190,150,90,.45)';
+    c.fillRect(-s*0.13,-s*0.74,s*0.26,s*0.05);
+    c.beginPath(); c.arc(0,-s*0.50,s*0.09,0,7); c.fill();
+  } else if(type==='armour'){                      // suit of armour in a niche
+    c.fillStyle='#0b1018'; c.fillRect(-s*0.17,-s*0.86,s*0.34,s*0.86);
+    c.fillStyle='#4a5568';
+    c.beginPath(); c.arc(0,-s*0.68,s*0.085,0,7); c.fill();
+    c.fillRect(-s*0.10,-s*0.60,s*0.20,s*0.26);
+    c.fillRect(-s*0.145,-s*0.58,s*0.045,s*0.22); c.fillRect(s*0.10,-s*0.58,s*0.045,s*0.22);
+    c.fillRect(-s*0.075,-s*0.34,s*0.055,s*0.26); c.fillRect(s*0.02,-s*0.34,s*0.055,s*0.26);
+    c.strokeStyle='#5d6a80'; c.lineWidth=Math.max(1,s*0.028);
+    c.beginPath(); c.moveTo(s*0.14,-s*0.60); c.lineTo(s*0.20,-s*0.10); c.stroke();
+  } else if(type==='chandelier'){
+    c.strokeStyle='#1d2634'; c.lineWidth=Math.max(1,s*0.022);
+    c.beginPath(); c.moveTo(0,-s*1.34); c.lineTo(0,-s*1.02); c.stroke();
+    c.fillStyle='#2a3446';
+    c.beginPath(); c.ellipse(0,-s*1.00,s*0.30,s*0.06,0,0,7); c.fill();
+    for(let i=-2;i<=2;i++){ const cx=i*s*0.12;
+      c.fillStyle='#d8ccae'; c.fillRect(cx-s*0.012,-s*1.06,s*0.024,s*0.06);
+      const g=c.createRadialGradient(cx,-s*1.09,0,cx,-s*1.09,s*0.10);
+      g.addColorStop(0,'rgba(255,205,130,.9)'); g.addColorStop(1,'rgba(255,170,70,0)');
+      c.fillStyle=g; c.beginPath(); c.arc(cx,-s*1.09,s*0.10,0,7); c.fill(); }
+  } else if(type==='townhouse'){                   // tall, narrow, leaning over the street
+    c.save(); c.rotate(0.03);
+    c.fillStyle='#151b26'; c.fillRect(-s*0.28,-s*1.10,s*0.56,s*1.10);
+    c.fillStyle='#0d121b';
+    c.beginPath(); c.moveTo(-s*0.40,-s*1.08); c.lineTo(s*0.34,-s*1.08);
+    c.lineTo(-s*0.02,-s*1.52); c.closePath(); c.fill();
+    c.fillStyle='#26303f';                          // jettied upper storey
+    c.fillRect(-s*0.34,-s*0.74,s*0.68,s*0.10);
+    c.strokeStyle='#26303f'; c.lineWidth=Math.max(1,s*0.025);
+    c.beginPath(); c.moveTo(-s*0.28,-s*0.40); c.lineTo(s*0.28,-s*0.40);
+    c.moveTo(0,-s*1.10); c.lineTo(0,-s*0.74); c.stroke();
+    c.fillStyle='rgba(255,186,92,.8)'; c.fillRect(-s*0.16,-s*0.96,s*0.12,s*0.14);
+    c.fillStyle='#080c12'; c.fillRect(-s*0.08,-s*0.34,s*0.16,s*0.34);
+    c.restore();
+  } else if(type==='inn'){                         // wider, lit, hanging sign
+    c.fillStyle='#171d29'; c.fillRect(-s*0.52,-s*0.86,s*1.04,s*0.86);
+    c.fillStyle='#0d121b';
+    c.beginPath(); c.moveTo(-s*0.62,-s*0.84); c.lineTo(s*0.62,-s*0.84);
+    c.lineTo(s*0.10,-s*1.24); c.closePath(); c.fill();
+    c.fillStyle='rgba(255,186,92,.85)';
+    c.fillRect(-s*0.38,-s*0.66,s*0.18,s*0.18); c.fillRect(s*0.06,-s*0.66,s*0.18,s*0.18);
+    const g=c.createRadialGradient(-s*0.1,-s*0.56,1,-s*0.1,-s*0.56,s*0.62);
+    g.addColorStop(0,'rgba(255,170,70,.26)'); g.addColorStop(1,'rgba(255,150,50,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(-s*0.1,-s*0.56,s*0.62,0,7); c.fill();
+    c.fillStyle='#080c12'; c.fillRect(-s*0.12,-s*0.40,s*0.24,s*0.40);
+    c.strokeStyle='#2b3648'; c.lineWidth=Math.max(1,s*0.022);
+    c.beginPath(); c.moveTo(s*0.40,-s*0.80); c.lineTo(s*0.58,-s*0.80); c.stroke();
+    c.fillStyle='#3a2a1c'; c.fillRect(s*0.48,-s*0.78,s*0.20,s*0.16);
+  } else if(type==='workshop'){                    // low, wide, shutters open
+    c.fillStyle='#141a25'; c.fillRect(-s*0.46,-s*0.56,s*0.92,s*0.56);
+    c.fillStyle='#0e131c';
+    c.beginPath(); c.moveTo(-s*0.54,-s*0.54); c.lineTo(s*0.54,-s*0.54);
+    c.lineTo(s*0.16,-s*0.82); c.closePath(); c.fill();
+    c.fillStyle='rgba(255,150,60,.55)'; c.fillRect(-s*0.20,-s*0.44,s*0.40,s*0.24);
+    c.fillStyle='#26303f';
+    for(let i=0;i<3;i++) c.fillRect(-s*0.44+i*s*0.32,-s*0.20,s*0.10,s*0.20);
+  } else if(type==='well'){
+    c.fillStyle='#1b2330'; c.beginPath(); c.ellipse(0,-s*0.10,s*0.24,s*0.10,0,0,7); c.fill();
+    c.fillStyle='#0a0e15'; c.beginPath(); c.ellipse(0,-s*0.12,s*0.16,s*0.06,0,0,7); c.fill();
+    c.strokeStyle='#2a2018'; c.lineWidth=Math.max(1,s*0.035);
+    c.beginPath(); c.moveTo(-s*0.20,-s*0.14); c.lineTo(-s*0.20,-s*0.52);
+    c.moveTo(s*0.20,-s*0.14); c.lineTo(s*0.20,-s*0.52);
+    c.moveTo(-s*0.24,-s*0.52); c.lineTo(s*0.24,-s*0.52); c.stroke();
+  } else if(type==='cart'){
+    c.fillStyle='#2a2018'; c.fillRect(-s*0.30,-s*0.34,s*0.60,s*0.18);
+    c.fillStyle='#1a1410';
+    c.beginPath(); c.arc(-s*0.18,-s*0.10,s*0.11,0,7); c.arc(s*0.18,-s*0.10,s*0.11,0,7); c.fill();
+    c.strokeStyle='#3a2c1e'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(s*0.30,-s*0.28); c.lineTo(s*0.52,-s*0.20); c.stroke();
+  } else if(type==='stall'){                       // market stall, striped awning
+    c.strokeStyle='#2a2018'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(-s*0.28,0); c.lineTo(-s*0.28,-s*0.40);
+    c.moveTo(s*0.28,0); c.lineTo(s*0.28,-s*0.40); c.stroke();
+    for(let i=0;i<4;i++){ c.fillStyle=i%2?'#3a2b33':'#2a2028';
+      c.fillRect(-s*0.32+i*s*0.16,-s*0.52,s*0.16,s*0.12); }
+    c.fillStyle='#241c16'; c.fillRect(-s*0.26,-s*0.36,s*0.52,s*0.08);
+  } else if(type==='creature'){
+    // Shelley's description, not the film makeup: very tall, gaunt, stitched,
+    // long dark hair, shrouded. Deliberately not flat-headed or bolted.
+    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.22,s*0.05,0,0,7); c.fill();
+    c.fillStyle='#2b3a33';
+    c.beginPath(); c.moveTo(-s*0.17,0); c.lineTo(-s*0.20,-s*0.86);
+    c.lineTo(s*0.20,-s*0.86); c.lineTo(s*0.17,0); c.closePath(); c.fill();
+    c.strokeStyle='#2b3a33'; c.lineWidth=Math.max(1,s*0.085); c.lineCap='round';
+    c.beginPath(); c.moveTo(-s*0.18,-s*0.78); c.lineTo(-s*0.30,-s*0.24);
+    c.moveTo(s*0.18,-s*0.78); c.lineTo(s*0.32,-s*0.30); c.stroke();
+    c.fillStyle='#7d8a72'; c.beginPath(); c.ellipse(0,-s*1.00,s*0.13,s*0.16,0,0,7); c.fill();
+    c.fillStyle='#12160f';                          // long dark hair
+    c.beginPath(); c.moveTo(-s*0.14,-s*1.02); c.quadraticCurveTo(0,-s*1.22,s*0.14,-s*1.02);
+    c.lineTo(s*0.11,-s*0.92); c.lineTo(-s*0.11,-s*0.92); c.closePath(); c.fill();
+    c.strokeStyle='#4a5a48'; c.lineWidth=Math.max(1,s*0.018);   // sutures
+    c.beginPath(); c.moveTo(-s*0.10,-s*0.96); c.lineTo(s*0.10,-s*0.96); c.stroke();
+    c.fillStyle='#0a0c08';
+    c.fillRect(-s*0.07,-s*1.02,s*0.05,s*0.03); c.fillRect(s*0.02,-s*1.02,s*0.05,s*0.03);
+  } else if(type==='doctor'){                      // frock coat, lantern
+    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.16,s*0.04,0,0,7); c.fill();
+    c.fillStyle='#181c26';
+    c.beginPath(); c.moveTo(-s*0.14,0); c.lineTo(-s*0.11,-s*0.62);
+    c.lineTo(s*0.11,-s*0.62); c.lineTo(s*0.14,0); c.closePath(); c.fill();
+    c.fillStyle='#d8ccae'; c.fillRect(-s*0.035,-s*0.60,s*0.07,s*0.22);
+    c.fillStyle='#c8b89a'; c.beginPath(); c.arc(0,-s*0.72,s*0.09,0,7); c.fill();
+    c.fillStyle='#20242e'; c.beginPath();
+    c.moveTo(-s*0.10,-s*0.76); c.quadraticCurveTo(0,-s*0.90,s*0.10,-s*0.76); c.closePath(); c.fill();
+    const g=c.createRadialGradient(s*0.22,-s*0.34,1,s*0.22,-s*0.34,s*0.24);
+    g.addColorStop(0,'rgba(255,214,140,.9)'); g.addColorStop(1,'rgba(255,170,70,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(s*0.22,-s*0.34,s*0.24,0,7); c.fill();
+  } else if(type==='assistant'){                   // hunched, stick, lamp
+    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.14,s*0.04,0,0,7); c.fill();
+    c.fillStyle='#241f1a';
+    c.beginPath(); c.moveTo(-s*0.14,0); c.quadraticCurveTo(-s*0.20,-s*0.34,-s*0.04,-s*0.46);
+    c.lineTo(s*0.14,-s*0.40); c.lineTo(s*0.13,0); c.closePath(); c.fill();
+    c.fillStyle='#b8a894'; c.beginPath(); c.arc(-s*0.02,-s*0.54,s*0.075,0,7); c.fill();
+    c.strokeStyle='#3a2c1e'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(s*0.12,-s*0.36); c.lineTo(s*0.18,0); c.stroke();
+  } else if(type==='mobber'){                      // villager: torch and pitchfork
+    c.fillStyle='rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0,0,s*0.15,s*0.04,0,0,7); c.fill();
+    c.fillStyle='#1e2028';
+    c.beginPath(); c.moveTo(-s*0.13,0); c.lineTo(-s*0.10,-s*0.54);
+    c.lineTo(s*0.10,-s*0.54); c.lineTo(s*0.13,0); c.closePath(); c.fill();
+    c.fillStyle='#a89880'; c.beginPath(); c.arc(0,-s*0.64,s*0.085,0,7); c.fill();
+    c.strokeStyle='#3a2c1e'; c.lineWidth=Math.max(1,s*0.028);   // pitchfork
+    c.beginPath(); c.moveTo(-s*0.16,-s*0.10); c.lineTo(-s*0.24,-s*0.84); c.stroke();
+    c.strokeStyle='#8d9aa8'; c.lineWidth=Math.max(1,s*0.02);
+    for(let i=-1;i<=1;i++){ c.beginPath();
+      c.moveTo(-s*0.24+i*s*0.05,-s*0.84); c.lineTo(-s*0.24+i*s*0.06,-s*0.99); c.stroke(); }
+    c.strokeStyle='#2a2018'; c.lineWidth=Math.max(1,s*0.028);   // torch
+    c.beginPath(); c.moveTo(s*0.15,-s*0.14); c.lineTo(s*0.22,-s*0.72); c.stroke();
+    const fl=1+Math.sin((Date.now()%600)/600*6.283)*0.2;
+    const g=c.createRadialGradient(s*0.23,-s*0.78,1,s*0.23,-s*0.78,s*0.26*fl);
+    g.addColorStop(0,'rgba(255,220,150,.95)'); g.addColorStop(.4,'rgba(255,150,50,.6)');
+    g.addColorStop(1,'rgba(255,120,30,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(s*0.23,-s*0.78,s*0.26*fl,0,7); c.fill();
+  } else if(type==='cottage'){                     // village: steep roof, one lit window
+    c.save(); c.rotate((Math.random()<0.5?1:-1)*0.0);
+    c.fillStyle='#141a24'; c.fillRect(-s*0.34,-s*0.62,s*0.68,s*0.62);
+    c.fillStyle='#0c1018';                          // the lean is the expressionist tell
+    c.beginPath(); c.moveTo(-s*0.46,-s*0.60); c.lineTo(s*0.40,-s*0.60);
+    c.lineTo(s*0.02,-s*1.14); c.closePath(); c.fill();
+    c.strokeStyle='#26303f'; c.lineWidth=Math.max(1,s*0.03);   // timber framing
+    c.beginPath(); c.moveTo(-s*0.34,-s*0.34); c.lineTo(s*0.34,-s*0.34);
+    c.moveTo(-s*0.10,-s*0.62); c.lineTo(-s*0.10,0); c.stroke();
+    c.fillStyle='rgba(255,186,92,.85)'; c.fillRect(s*0.06,-s*0.48,s*0.15,s*0.16);
+    const wg=c.createRadialGradient(s*0.13,-s*0.40,1,s*0.13,-s*0.40,s*0.34);
+    wg.addColorStop(0,'rgba(255,170,70,.30)'); wg.addColorStop(1,'rgba(255,150,50,0)');
+    c.fillStyle=wg; c.beginPath(); c.arc(s*0.13,-s*0.40,s*0.34,0,7); c.fill();
+    c.restore();
+  } else if(type==='torchmob'){                    // the only warm light on the track
+    c.fillStyle='#0e131c';
+    c.beginPath(); c.ellipse(0,-s*0.16,s*0.11,s*0.20,0,0,7); c.fill();
+    c.strokeStyle='#2a2018'; c.lineWidth=Math.max(1,s*0.035);
+    c.beginPath(); c.moveTo(s*0.07,-s*0.30); c.lineTo(s*0.15,-s*0.66); c.stroke();
+    const t=(Date.now()%700)/700, fl=1+Math.sin(t*6.283)*0.18;
+    const g=c.createRadialGradient(s*0.16,-s*0.70,1,s*0.16,-s*0.70,s*0.42*fl);
+    g.addColorStop(0,'rgba(255,214,140,.95)'); g.addColorStop(.35,'rgba(255,150,50,.55)');
+    g.addColorStop(1,'rgba(255,120,30,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(s*0.16,-s*0.70,s*0.42*fl,0,7); c.fill();
+  } else if(type==='buttress'){                    // approach: the castle, as repetition
+    c.fillStyle='#161d2a';
+    c.beginPath(); c.moveTo(-s*0.30,0); c.lineTo(-s*0.20,-s*1.30);
+    c.lineTo(s*0.20,-s*1.30); c.lineTo(s*0.30,0); c.closePath(); c.fill();
+    c.fillStyle='#1f2838';                          // stone courses
+    for(let i=0;i<6;i++) c.fillRect(-s*0.28+i*s*0.012,-s*1.18+i*s*0.20,s*0.56-i*s*0.024,s*0.035);
+    c.fillStyle='#05070c'; c.fillRect(-s*0.07,-s*0.92,s*0.14,s*0.34);   // arrow slit
+  } else if(type==='ravenpost'){
+    c.strokeStyle='#1a212e'; c.lineWidth=Math.max(1,s*0.06);
+    c.beginPath(); c.moveTo(0,0); c.lineTo(-s*0.03,-s*0.78); c.stroke();
+    c.fillStyle='#080a10';
+    c.beginPath(); c.ellipse(-s*0.03,-s*0.88,s*0.13,s*0.10,0.2,0,7); c.fill();
+    c.beginPath(); c.moveTo(s*0.08,-s*0.90); c.lineTo(s*0.20,-s*0.86); c.lineTo(s*0.08,-s*0.83); c.closePath(); c.fill();
+  } else if(type==='labbank'){                     // lab: horizontal machine banks
+    c.fillStyle='#1b2230'; c.fillRect(-s*0.40,-s*0.86,s*0.80,s*0.86);
+    c.fillStyle='#0b0f16'; c.fillRect(-s*0.34,-s*0.78,s*0.68,s*0.30);
+    const bl=(Date.now()%900)/900;
+    for(let i=0;i<5;i++){                            // dials and switch banks
+      const on=((i+Math.floor(bl*5))%3)===0;
+      c.fillStyle=on?'rgba(190,225,255,.95)':'#2c3646';
+      c.beginPath(); c.arc(-s*0.26+i*s*0.13,-s*0.63,s*0.045,0,7); c.fill();
+    }
+    c.fillStyle='#39465c'; for(let i=0;i<4;i++) c.fillRect(-s*0.32+i*s*0.18,-s*0.40,s*0.10,s*0.26);
+  } else if(type==='coilrig'){                     // lab: the tall coils
+    c.fillStyle='#222b3a'; c.fillRect(-s*0.07,-s*1.00,s*0.14,s*1.00);
+    for(let i=0;i<6;i++){ c.fillStyle=i%2?'#3a4a64':'#2a3448';
+      c.fillRect(-s*0.16,-s*0.94+i*s*0.14,s*0.32,s*0.07); }
+    c.fillStyle='#cfe4ff'; c.beginPath(); c.arc(0,-s*1.06,s*0.10,0,7); c.fill();
+    const g=c.createRadialGradient(0,-s*1.06,1,0,-s*1.06,s*0.34);
+    g.addColorStop(0,'rgba(190,225,255,.7)'); g.addColorStop(1,'rgba(150,200,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(0,-s*1.06,s*0.34,0,7); c.fill();
+  } else if(type==='chainrun'){
+    c.strokeStyle='#2a3242'; c.lineWidth=Math.max(1,s*0.03);
+    c.beginPath(); c.moveTo(-s*0.02,-s*1.20);
+    for(let i=0;i<5;i++) c.lineTo((i%2?s*0.05:-s*0.05),-s*1.20+i*s*0.22);
+    c.stroke();
+    c.fillStyle='#39465c'; c.fillRect(-s*0.10,-s*0.16,s*0.20,s*0.16);
+  } else if(type==='crenel'){                      // battlements: notched silhouette
+    c.fillStyle='#161d2a'; c.fillRect(-s*0.42,-s*0.44,s*0.84,s*0.44);
+    c.fillStyle='#1f2838';
+    for(let i=0;i<3;i++) c.fillRect(-s*0.38+i*s*0.28,-s*0.72,s*0.18,s*0.30);
+  } else if(type==='gargoyle'){
+    c.fillStyle='#141b26';
+    c.beginPath(); c.moveTo(-s*0.20,0); c.lineTo(-s*0.14,-s*0.40);
+    c.lineTo(s*0.14,-s*0.40); c.lineTo(s*0.20,0); c.closePath(); c.fill();
+    c.beginPath(); c.ellipse(0,-s*0.50,s*0.15,s*0.13,0,0,7); c.fill();
+    c.beginPath(); c.moveTo(-s*0.14,-s*0.50); c.lineTo(-s*0.40,-s*0.66); c.lineTo(-s*0.12,-s*0.60); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(s*0.14,-s*0.50); c.lineTo(s*0.40,-s*0.66); c.lineTo(s*0.12,-s*0.60); c.closePath(); c.fill();
+    c.fillStyle='rgba(190,225,255,.5)';
+    c.fillRect(-s*0.08,-s*0.54,s*0.05,s*0.04); c.fillRect(s*0.03,-s*0.54,s*0.05,s*0.04);
+  } else if(type==='rockspire'){                   // descent: bare rock, nothing built
+    c.fillStyle='#131924';
+    c.beginPath(); c.moveTo(-s*0.26,0); c.lineTo(-s*0.08,-s*0.96);
+    c.lineTo(s*0.06,-s*0.72); c.lineTo(s*0.24,0); c.closePath(); c.fill();
+    c.fillStyle='#1c2432';
+    c.beginPath(); c.moveTo(-s*0.08,-s*0.96); c.lineTo(s*0.06,-s*0.72); c.lineTo(s*0.10,-s*0.30); c.closePath(); c.fill();
   } else if(type==='archwelcome'){                                // the sign over the start line
     const T=(TH.signs&&TH.signs.welcome)||['WELCOME TO','CAMP CRYSTAL LAKE'];
     // Proportions are deliberately squat: s is now keyed to the road's half-width,
@@ -1167,6 +1612,126 @@ function drawZombie(c,x,y,size){ const s=size; c.save(); c.translate(x,y);
    contact, then he's gone — and somewhere else. Original figure, not a
    licensed one: sackcloth hood, lake-rotted, drags a rusted blade.        ---- */
 let STALK=null;
+/* ARC GATES — pylon pairs that discharge across the road.
+   Timed off the track's own BPM so they fire on the downbeat: the music and the
+   hazard are the same clock, and you end up driving to the beat without being
+   told to. Unlike the Crystal Lake stalker these are perfectly predictable —
+   this track rewards learning the rhythm, not luck. */
+let ARCS=[];
+function buildArcs(){
+  ARCS=[];
+  if(!TH.arcs) return;
+  const N=CENTER.length;
+  // spread through the approach and battlement runs, never inside the lab
+  [['approach',5],['battlement',4]].forEach(([zone,count])=>{
+    const R=arcRange(zone); if(!R) return;
+    for(let i=0;i<count;i++){
+      const f=R.from+(i+0.5)/count*(R.to-R.from);
+      // Each gate seals only ONE HALF of the road, alternating sides, so there
+      // is always a line through it. A hazard that spans the whole track isn't
+      // a hazard, it's a toll — you were dying with nowhere to go.
+      ARCS.push({node:Math.floor(f*N), phase:i%4, live:0, charge:0, side:(i%2?1:-1)});
+    }
+  });
+}
+function updateArcs(dt){
+  if(!ARCS.length||raceStart===undefined) return;
+  const beat=60/(TH.bpm||172);
+  const now=(performance.now()-raceStart)/1000;
+  const N=CENTER.length;
+  for(const a of ARCS){
+    const idx=Math.floor(now/beat)+a.phase;
+    const frac=(now/beat)%1;
+    const onBeat=(idx%4)===0;
+    a.charge = ((idx%4)===3) ? frac : 0;          // tell: the beat before it fires
+    a.live   = onBeat && frac<0.30 ? 1-frac/0.30 : 0;
+    if(a.live>0.25){
+      const f=frameAt(a.node,N);
+      for(const k of [player,...rivals]){
+        if(k.dead>0||k.inv>0) continue;
+        if(Math.abs(((k.node-a.node+N*1.5)%N)-N*0.5)>6) continue;   // near this gate
+        const dx=k.x-f.a.x, dy=k.y-f.a.y;
+        const lat=dx*f.nx+dy*f.ny;                 // which side of the centreline
+        if(Math.hypot(dx,dy)<ROADW+16 && lat*a.side > -6){
+          damageKart(k,999,null);
+          EXPL.push({x:k.x,y:k.y,life:0.4,r:1.2});
+          if(k.isPlayer){ addShake(30); flashMsg('ZAPPED!'); }
+        }
+      }
+    }
+  }
+}
+function drawArc(c,x,y,size,live,charge,side){
+  const s=size, sd=side||-1;
+  for(const sx of [-s*0.5, s*0.5]){                // the two pylons
+    c.fillStyle='#222b3a'; c.fillRect(sx-s*0.05,-s*0.92,s*0.10,s*0.92);
+    for(let i=0;i<4;i++){ c.fillStyle=i%2?'#3a4a64':'#2a3448';
+      c.fillRect(sx-s*0.11,-s*0.86+i*s*0.18,s*0.22,s*0.08); }
+    const glow=0.25+charge*0.75+live*0.9;
+    c.fillStyle='rgba(200,230,255,'+Math.min(1,glow)+')';
+    c.beginPath(); c.arc(sx,-s*0.98,s*0.07,0,7); c.fill();
+  }
+  if(charge>0.05){                                  // building — small crackles at the tips
+    c.strokeStyle='rgba(170,215,255,'+(charge*0.5)+')'; c.lineWidth=Math.max(1,s*0.012);
+    for(let i=0;i<3;i++){ const sx=(i%2?1:-1)*s*0.5;
+      c.beginPath(); c.moveTo(sx,-s*0.98);
+      c.lineTo(sx+(Math.random()-0.5)*s*0.18,-s*0.98+(Math.random()-0.5)*s*0.18); c.stroke(); }
+  }
+  if(live>0){
+    // The bolt only crosses the sealed half — the open half stays clear so the
+    // gap you have to aim for is visible from a long way back.
+    const x0 = sd<0 ? -s*0.5 : 0, x1 = sd<0 ? 0 : s*0.5;
+    c.strokeStyle='rgba(230,245,255,'+live+')'; c.lineWidth=Math.max(1.5,s*0.035);
+    c.beginPath(); c.moveTo(x0,-s*0.98);
+    for(let i=1;i<6;i++) c.lineTo(x0+i*(x1-x0)/6,-s*0.98+(Math.random()-0.5)*s*0.28);
+    c.lineTo(x1,-s*0.98); c.stroke();
+    c.strokeStyle='rgba(150,200,255,'+(live*0.4)+')'; c.lineWidth=Math.max(1,s*0.10);
+    c.stroke();
+    c.fillStyle='rgba(190,225,255,'+(live*0.5)+')';   // sparks at the live pylon
+    c.beginPath(); c.arc(sd<0?-s*0.5:s*0.5,-s*0.98,s*0.05,0,7); c.fill();
+  }
+}
+/* THE MOB — villagers spill onto the road with torches and pitchforks.
+   Unlike the arc gates they are not on a clock, and unlike the Crystal Lake
+   stalker they are a WIDE obstacle rather than a single figure: they seal a
+   band of the road so you have to pick a line, not just react. Hitting them
+   is fatal, then they scatter and re-form somewhere else. */
+let MOB=null;
+function buildMob(){
+  MOB = TH.mob ? {on:false,node:0,t:5+Math.random()*7,life:0,side:1,fade:0,n:5} : null;
+}
+function spawnMob(){
+  const N=CENTER.length;
+  let node=(player.node + 110 + ((Math.random()*130)|0))%N, guard=0;
+  // they gather in the open — never inside the castle, never on the battlements
+  while(['castle','battlement'].indexOf(zoneAt(node/N))>=0 && guard++<50) node=(node+31)%N;
+  MOB.node=node; MOB.side=Math.random()<0.5?1:-1;
+  MOB.n=4+((Math.random()*3)|0);
+  MOB.on=true; MOB.life=4+Math.random()*3; MOB.fade=0;
+  if(soundOn) beep(210,.22);
+}
+function updateMob(dt){
+  if(!MOB) return;
+  if(!MOB.on){ MOB.t-=dt; if(MOB.t<=0) spawnMob(); return; }
+  MOB.fade=Math.min(1,MOB.fade+dt*3);
+  MOB.life-=dt;
+  if(MOB.life<=0){ MOB.on=false; MOB.t=7+Math.random()*9; return; }
+  const N=CENTER.length, f=frameAt(MOB.node,N);
+  for(const k of [player,...rivals]){
+    if(k.dead>0||k.inv>0) continue;
+    let d=Math.abs(((k.node-MOB.node+N*1.5)%N)-N*0.5);
+    if(d>7) continue;
+    const lat=(k.x-f.a.x)*f.nx+(k.y-f.a.y)*f.ny;
+    // they hold one side plus the centre — there is always a way past
+    if(lat*MOB.side > -ROADW*0.15){
+      damageKart(k,999,null);
+      EXPL.push({x:k.x,y:k.y,life:0.45,r:1.1});
+      if(k.isPlayer){ addShake(30); flashMsg('THE MOB'); }
+      MOB.on=false; MOB.t=9+Math.random()*9;
+      break;
+    }
+  }
+}
 function buildStalker(){
   STALK = TH.stalker ? {on:false,x:0,y:0,node:0,t:6+Math.random()*9,life:0,anim:0,fade:0} : null;
 }
@@ -1487,7 +2052,8 @@ function updateKart(k,dt,input){
   // Real oversteer builds with pace — grip fades as speed rises, so the same
   // input that tucks in neatly at 60 will step the back end out at 120.
   let g = road?GRIP:GRIP_OFF;
-  if(road){ const sf=Math.min(1,Math.abs(fwd)/MAXS); g *= (1 - GRIP_FADE*sf); }
+  if(road){ const sf=Math.min(1,Math.abs(fwd)/MAXS); g *= (1 - GRIP_FADE*sf);
+    if(TH.zoneGrip){ const zg=TH.zoneGrip[zoneAt(k.node/CENTER.length)]; if(zg) g*=zg; } }
   if(k.drift>0){ g*=0.38; k.drift-=dt; }     // hop flick → temporary slide
   lat *= Math.exp(-g*dt);
 
@@ -1602,7 +2168,7 @@ function render(){
     const sxp=BW/2 + (lat/(depth*HFOV))*(BW/2);
     const size=clamp(p*0.5, 6, 60);
     const airlift = k.air>0 ? Math.sin((k.air/0.72)*Math.PI)*size*0.9 : 0;
-    sprites.push({sx:sxp, sy:sy-airlift, size, k, depth, dead:k.dead>0});
+    sprites.push({sx:sxp, sy:sy-airlift, size, k, depth, dead:k.dead>0, tag:k.netName});
   }
   for(const o of TOBJ){
     if(o.type==='box' && o.cool>0) continue;
@@ -1622,6 +2188,34 @@ function render(){
     const lat=relx*rx+rely*ry, p=A_DIST/depth; if(p<1||p>BH-HORIZON+60) continue;
     const sxp=BW/2+(lat/(depth*HFOV))*(BW/2); if(sxp<-40||sxp>BW+40) continue;
     sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.42,4,52), depth, kind:'zomb'});
+  }
+  if(MOB&&MOB.on){
+    const N2=CENTER.length, f=frameAt(MOB.node,N2);
+    for(let m=0;m<MOB.n;m++){
+      const spread=(m/(MOB.n-1)-0.08)*ROADW*1.15*MOB.side;
+      const jx=f.a.x+f.nx*spread+f.dx*(m%2?0.6:0), jy=f.a.y+f.ny*spread+f.dy*(m%2?0.6:0);
+      const relx=jx-camx, rely=jy-camy, depth=relx*cf+rely*sf;
+      if(depth<10||depth>1100) continue;
+      const lat=relx*rx+rely*ry, p=A_DIST/depth;
+      if(p<1||p>BH-HORIZON+60) continue;
+      const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
+      if(sxp<-40||sxp>BW+40) continue;
+      sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.6,5,80), depth, deco:'mobber'});
+    }
+  }
+  for(const a of ARCS){
+    if(a.live<=0&&a.charge<=0.05) continue;
+    const f=frameAt(a.node,CENTER.length);
+    const relx=f.a.x-camx, rely=f.a.y-camy, depth=relx*cf+rely*sf;
+    if(depth>10&&depth<1200){
+      const lat=relx*rx+rely*ry, p=A_DIST/depth;
+      if(p>=1&&p<=BH-HORIZON+80){
+        const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
+        if(sxp>=-90&&sxp<=BW+90)
+          sprites.push({sx:sxp, sy:HORIZON+p, size:clamp(p*0.5*((ROADW+30)/2/4.025*2),4,300),
+                        depth, kind:'arc', live:a.live, charge:a.charge, side:a.side});
+      }
+    }
   }
   if(STALK&&STALK.on){
     const relx=STALK.x-camx, rely=STALK.y-camy, depth=relx*cf+rely*sf;
@@ -1658,9 +2252,20 @@ function render(){
     else if(s.kind==='tobj') drawTrackObj(bctx,s.sx,s.sy,s.size,s.ttype);
     else if(s.kind==='zomb') drawZombie(bctx,s.sx,s.sy,s.size);
     else if(s.kind==='stalk') drawStalker(bctx,s.sx,s.sy,s.size,s.alpha);
+    else if(s.kind==='arc') drawArc(bctx,s.sx,s.sy,s.size,s.live,s.charge,s.side);
     else if(s.deco) drawDecor(bctx,s.sx,s.sy,s.size,s.deco);
     else if(s.dead) drawExpl(bctx,s.sx,s.sy,s.size*0.9);
-    else drawKartSprite(bctx,s.sx,s.sy,s.size,s.k.char,0);
+    else {
+      drawKartSprite(bctx,s.sx,s.sy,s.size,s.k.char,0);
+      if(s.tag && s.size>9){                       // name tag over remote players
+        bctx.font='6px monospace'; bctx.textAlign='center';
+        bctx.fillStyle='rgba(0,0,0,.55)';
+        const w=bctx.measureText(s.tag).width+4;
+        bctx.fillRect(s.sx-w/2, s.sy-s.size*0.95-8, w, 8);
+        bctx.fillStyle='#ffd98a';
+        bctx.fillText(s.tag, s.sx, s.sy-s.size*0.95-2);
+      }
+    }
   }
 
   // ---- player billboard (fixed, bottom centre) ----
@@ -1984,6 +2589,7 @@ function addShake(a){ if(a>shake) shake=a; }
 const MENUS={
   main:{ kick:'SINISTER DIVISION', title:'Sinister Kart<span class="sub">◈ GRAVE PRIX ◈</span>', items:[
     {label:'SINGLE PLAYER', act:()=>openMenu('mode')},
+    {label:'MULTIPLAYER', act:()=>openMPBrowser()},
     {label:'HOW TO PLAY', act:()=>openMenu('howto')},
     {label:'OPTIONS', act:()=>openMenu('options')},
   ]},
@@ -1993,11 +2599,11 @@ const MENUS={
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
   howto:{ kick:'', title:'HOW TO PLAY',
-    body:'<b>↑</b> gas &nbsp; <b>↓</b> brake &nbsp; <b>← →</b> steer &nbsp; <b>SPACE</b> drift-hop &nbsp; <b>SHIFT</b> turbo &nbsp; <b>F</b> fire<br><br>Grab glowing <b>?</b> boxes for power-ups: rapid-fire, spread shot, shield, or instant nitro. Hit gold <b>ramps</b> at speed to launch over trouble. Dodge the <b>spikes</b> — they wreck you.<br><br>Everyone fights everyone. Weapons stay holstered for the first 10 seconds — the start is decided by driving. Fall behind and the pack leans on it to hunt you down; get in front and they will not let you rest.<br><br>Top speed is 125 MPH. Nitrous takes you to 175. The faster you go the looser the back end gets, so learn to catch the slide.<br><br>Single Race is one 3-lap sprint. Tournament is a 4-race cup — points by finish, highest total is champion.',
+    body:'<b>↑</b> gas &nbsp; <b>↓</b> brake &nbsp; <b>← →</b> steer &nbsp; <b>SPACE</b> drift-hop &nbsp; <b>SHIFT</b> turbo &nbsp; <b>F</b> fire<br><br>Grab glowing <b>?</b> boxes for power-ups: rapid-fire, spread shot, shield, or instant nitro. Hit gold <b>ramps</b> at speed to launch over trouble. Dodge the <b>spikes</b> — they wreck you.<br><br>Everyone fights everyone. Weapons stay holstered for the first 10 seconds — the start is decided by driving. Fall behind and the pack leans on it to hunt you down; get in front and they will not let you rest.<br><br>Top speed is 125 MPH. Nitrous takes you to 175. The faster you go the looser the back end gets, so learn to catch the slide.<br><br>Single Race is one 3-lap sprint. Tournament is a 4-race cup — points by finish, highest total is champion.<br><br><b>Multiplayer:</b> create or join a lobby, pick your racer, and the host picks the track. You race against everyone live — their karts appear on track with name tags. Fastest time takes the round; points build a standings table across races.',
     items:[ {label:'◀ BACK', act:()=>openMenu('main')} ]},
   options:{ kick:'', title:'OPTIONS', items:[
     {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
-    {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); paintMenuSel(); }},
+    {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); else menuMusic(); paintMenuSel(); }},
     {label:()=>'DIFFICULTY:  '+(diffMode==='auto'?'ADAPTIVE':diffMode.toUpperCase()),
       act:()=>{ const seq=['auto','easy','normal','hard'];
         diffMode=seq[(seq.indexOf(diffMode)+1)%seq.length];
@@ -2007,6 +2613,8 @@ const MENUS={
       document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
+  mpbrowse:{ kick:'MULTIPLAYER', title:'LOBBIES', items:[] },
+  mproom:{ kick:'LOBBY', title:'ROOM', items:[] },
   pause:{ kick:'', title:'PAUSED', items:[
     {label:'RESUME', act:()=>resumeRace()},
     {label:'RESTART', act:()=>startRace()},
@@ -2040,7 +2648,9 @@ function menuMove(d){ const n=MENUS[curMenu].items.length; menuSel=(menuSel+d+n)
 function menuActivate(){ beep(760,.08); MENUS[curMenu].items[menuSel].act(); }
 function pauseRace(){ engineStop(); musicStop(); openMenu('pause'); }
 function resumeRace(){ closeMenu(); state='race'; last=performance.now(); engineStart(); musicStart(); }
-function quitToMenu(){ closeMenu(); engineStop(); musicStop(); openMenu('main'); }
+function quitToMenu(){ closeMenu(); engineStop(); musicStop();
+  if(MP.on){ if(mpTimer){clearInterval(mpTimer);mpTimer=null;} mpLeave(); }
+  openMenu('main'); menuMusic(); }
 
 /* ================================================================
    MODE SELECT · CHARACTER SELECT · TOURNAMENT
@@ -2063,7 +2673,7 @@ function renderTrackSel(){ const t=TRACKS[selTrack];
 }
 function trkMove(d){ selTrack=(selTrack+d+TRACKS.length)%TRACKS.length; renderTrackSel(); beep(560,.05); }
 function confirmTrack(){ beep(880,.1);
-  applyTheme(selTrack); buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker();
+  applyTheme(selTrack); buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
   document.getElementById('trackselect').classList.remove('show'); openCharSelect();
 }
 function chooseMode2(){}
@@ -2099,6 +2709,7 @@ function confirmSelect(){ beep(880,.1);
 }
 function charBack(){ document.getElementById('charselect').classList.remove('show'); openTrackSelect(); }
 function onAgain(){
+  if(MP.on){ openMPRoom(); menuMusic(); return; }   // back to the lobby for the next round
   if(raceMode==='cup' && cupRace<CUP_RACES){ startRace(); }
   else { raceMode='race'; openMenu('main'); }
 }
@@ -2108,7 +2719,8 @@ function startRace(){
   const pc = selectedChar || {...CHARS[0]};
   player=makeKart(pc,true);
   rivals=CHARS.filter((c,i)=>i!==selIdx).map(c=>makeKart(c,false));
-  placeGrid(); buildTrackObjects(); buildZombies(); buildStalker();
+  if(MP.on){ mpNetInit(); mpClearLive(); }   // fresh slots and a clean live channel
+  placeGrid(); buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
   closeMenu(); hide('scFinish'); document.getElementById('charselect').classList.remove('show');
   PROJ=[]; EXPL=[];
   state='countdown'; countdown(3);
@@ -2120,7 +2732,8 @@ function countdown(n){
   const tick=(v)=>{
     if(v===0){ cn.textContent='GO!'; beep(880,.18);
       setTimeout(()=>{el.classList.remove('show');},700);
-      state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart(); musicStart();
+      state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart();
+      musicStop(); musicStart();          // swap the menu theme for the circuit score
       rivals.forEach(r=>r.lapStart=raceStart);
       return;
     }
@@ -2160,6 +2773,13 @@ function finish(){
       `<div class="roster-line${c.name===player.char.name?' me':''}">${i+1}. ${c.name} — ${cupPts[c.name]} PTS</div>`).join('');
     document.getElementById('againBtn').textContent = done?'▸ BACK TO MENU':'▸ NEXT RACE';
     showDiffNote(diffBefore);
+    if(MP.on){ mpPostResult(elapsed, place);
+      const el=document.getElementById('finBody');
+      if(el){ const d=document.createElement('div'); d.innerHTML=mpResultsBlock(); el.appendChild(d);
+        // the round is scored a few seconds after everyone reports in
+        setTimeout(()=>{ const d2=document.getElementById('finBody');
+          if(d2&&state==='finish'){ const x=document.createElement('div');
+            x.innerHTML=mpResultsBlock(); d2.appendChild(x); } }, 5000); } }
     beep(done?990:660,.35);
   } else {
     document.getElementById('finKick').textContent = place===1?'GRAVE PRIX — WON':'RACE COMPLETE';
@@ -2169,6 +2789,13 @@ function finish(){
       'TOTAL <span class="g">'+fmt(elapsed)+'</span><br>BEST LAP <span class="g">'+(player.best<Infinity?fmt(player.best):'--:--')+'</span>';
     document.getElementById('againBtn').textContent='▸ RUN IT BACK';
     showDiffNote(diffBefore);
+    if(MP.on){ mpPostResult(elapsed, place);
+      const el=document.getElementById('finBody');
+      if(el){ const d=document.createElement('div'); d.innerHTML=mpResultsBlock(); el.appendChild(d);
+        // the round is scored a few seconds after everyone reports in
+        setTimeout(()=>{ const d2=document.getElementById('finBody');
+          if(d2&&state==='finish'){ const x=document.createElement('div');
+            x.innerHTML=mpResultsBlock(); d2.appendChild(x); } }, 5000); } }
     beep(place===1?880:220,.4);
   }
   show('scFinish');
@@ -2176,7 +2803,7 @@ function finish(){
   placeGrid();
   PROJ=[]; EXPL=[];
   [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0;k._wasAir=0; }); firePressed=false; raceWrecks=0;
-  buildTrackObjects(); buildZombies(); buildStalker();
+  buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
 }
 
 /* ================================================================
@@ -2198,13 +2825,17 @@ function loop(now){
       // the thing making the game hard.
       r.rubber = gap>=0 ? clamp(1+gap*0.016, 1, 1.07)    // behind you → gentle chase
                         : clamp(1+gap*0.030, 0.91, 1); } // ahead of you → slight ease
-    for(const r of rivals) updateKart(r,dt,aiInput(r));
+    // Remote players drive their own karts; only the AI slots get updateKart.
+    for(const r of rivals) if(!r.net) updateKart(r,dt,aiInput(r));
+    mpNetTick(dt); mpApplyRemote();
     if(firePressed){ fireWeapon(player); firePressed=false; }   // consumed on use
     for(const r of rivals) aiMaybeFire(r);
     updateCombat(dt);
     updateTrackObjects(dt);
     updateZombies(dt);
     updateStalker(dt);
+    updateArcs(dt);
+    updateMob(dt);
     kartCollisions();
     updateProgress(player,now);
     if(state==='race') for(const r of rivals) updateProgress(r,now);
@@ -2291,7 +2922,12 @@ function buildTrackObjects(){
     const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1, nx=-dy/l, ny=dx/l;
     TOBJ.push({x:a.x+nx*(off||0), y:a.y+ny*(off||0), type, cool:0, node:i%N}); };
   for(let k=0;k<5;k++) put(Math.floor((k+0.5)/5*N), 'box', (Math.random()*50-25));
-  for(let k=0;k<3;k++)  put(Math.floor((k+0.3)/3*N), 'ramp', 0);
+  /* Enclosed zones can't take a ramp — under a stone vault you'd launch into
+     the ceiling. Nudge the placement along until it clears them. */
+  const clear=(i)=>{ let n=i%N, guard=0;
+    while(TH.noRamp && TH.noRamp.indexOf(zoneAt(n/N))>=0 && guard++<40) n=(n+29)%N;
+    return n; };
+  for(let k=0;k<3;k++)  put(clear(Math.floor((k+0.3)/3*N)), 'ramp', 0);
   for(let k=0;k<8;k++)  put(Math.floor((k+0.15)/8*N), 'spike', (Math.random()<0.5?1:-1)*(ROADW-8));
 }
 function grantPower(k){
@@ -2311,8 +2947,25 @@ function updateTrackObjects(dt){
       if(o.type==='box'){ if(d<tobjHit('box')){ grantPower(k); o.cool=12; break; } }
       else if(o.type==='ramp'){ if(d<tobjHit('ramp') && k.air<=0 && Math.abs(k.spd)>130){
         k.air=0.72; k.vx*=1.12; k.vy*=1.12; if(k.isPlayer)beep(500,.12); } }
-      else if(o.type==='spike'){ if(d<tobjHit('spike') && k.air<=0 && k.inv<=0){
-        damageKart(k,50,null); k.inv=0.6; if(k.isPlayer)beep(120,.12); } }
+      else if(o.type==='spike'){
+        /* The strip is DRAWN as a wide bar but was TESTED as a circle, so
+           clipping either end registered a glancing hit and you slid off the
+           side — that was the bounce. Test the rectangle the sprite actually
+           occupies: full width across the road, thin along it. */
+        if(k.air>0) continue;                       // jumping it is the way past
+        const fr=frameAt(o.node,CENTER.length);
+        const rx=k.x-o.x, ry=k.y-o.y;
+        const across=Math.abs(rx*fr.nx+ry*fr.ny);   // lateral, across the road
+        const along =Math.abs(rx*(fr.dx/Math.hypot(fr.dx,fr.dy)) +
+                              ry*(fr.dy/Math.hypot(fr.dx,fr.dy)));
+        if(across < TOBJ_SIZE.spike.width/2 + 2 && along < 9){
+          // Lethal for everyone, no exceptions and no shrugging it off.
+          k.inv=0;                                  // shields do not save you here
+          damageKart(k,9999,null);
+          EXPL.push({x:k.x,y:k.y,life:0.45,r:1.1});
+          if(k.isPlayer){ addShake(30); flashMsg('SHREDDED'); beep(90,.3); }
+        }
+      }
     }
   }
 }
@@ -2478,7 +3131,7 @@ const DRIVE={};
 
 addEventListener('keydown',e=>{
   const t=keyTok(e); if(!t) return;
-  if(state==='boot'){ e.preventDefault(); skipBoot(); return; }      // impatient players
+  if(state==='boot'){ e.preventDefault(); menuMusic(); skipBoot(); return; }   // impatient players
   if(state==='title'){ e.preventDefault(); leaveTitle(); return; }   // any key = start
   if(state==='menu'||state==='pause'){
     if(isAct(t,'up')){ e.preventDefault(); menuMove(-1); }
@@ -2530,7 +3183,8 @@ addEventListener('blur',()=>{ setTimeout(()=>{ if(!document.hasFocus()){
 DISP.tabIndex=0;
 addEventListener('pointerdown',()=>{ try{window.focus();DISP.focus();}catch(e){} });
 // click works as start too — essential in-world, where keys may not arrive at all
-addEventListener('pointerdown',()=>{ if(state==='boot') skipBoot(); else if(state==='title') leaveTitle(); });
+addEventListener('pointerdown',()=>{ if(state==='boot') skipBoot(); else if(state==='title') leaveTitle();
+  if(state==='boot'||state==='title'||state==='menu') menuMusic(); });
 try{ window.focus(); }catch(e){}
 document.getElementById('againBtn').onclick=onAgain;
 
@@ -2747,6 +3401,16 @@ const SCORES=[
    prog:[31,31,36,36,34,34,31,33], drums:'twostep', reese:'wide',
    lead:[12,_,_,15, _,_,19,_,  _,15,_,_,  12,_,_,_] }
 ];
+
+/* ── SHELVED: the gothic DnB theme. Written for the menus, but 174bpm fights a
+   screen you sit and read on. Kept here ready to drop into SCORES as a circuit
+   score — the Neapolitan bII (Eb) and major-V (E) against a D minor tonic are
+   the cathedral chords, and it drives hard. Good candidate for a cathedral or
+   crypt track. ── */
+const CATHEDRAL_SCORE = { bpm:174, cut:7000, gain:0.465, sig:'organ', key:38,
+  prog:[38,38,34,33, 38,41,39,40],       // Dm Dm Bb A | Dm F Eb E(V)
+  drums:'rolling', reese:'churn',
+  lead:[12,_,_,15, _,12,_,19,  _,15,_,12, _,_,11,_] };
 
 const BARS=48, STEPS=BARS*16;
 /* A real DnB arrangement, not four equal quarters. */
@@ -3003,13 +3667,124 @@ function musStep(i,t){
   }
 }
 
-function musicStart(){
+/* ================================================================
+   MENU THEME — creepy lofi.
+   Deliberately NOT the DnB engine: 68bpm, brushed drums with swing, a
+   dusty detuned piano, a music-box lead and vinyl hiss. Everything is
+   soft-attack so nothing pokes at you while you sit on the menu.
+   Harmony is the gothic part — Dm with a Neapolitan bII and a major V.
+   ================================================================ */
+const LOFI = { bpm:68, bars:16, gain:0.34, cut:3400,
+  // Dm7 · Bbmaj7 · Ebmaj7(bII) · A7(V) — two bars each
+  prog:[[38,[38,41,45,48]],[38,[38,41,45,48]],
+        [34,[34,38,41,45]],[34,[34,38,41,45]],
+        [39,[39,43,46,50]],[39,[39,43,46,50]],
+        [33,[33,37,40,43]],[33,[33,37,40,43]]],
+  // music-box melody, sparse and a little wandering
+  lead:[[74,_,_,_, 77,_,_,_,  _,_,81,_, _,_,_,_],
+        [_,_,79,_, _,_,_,_,   77,_,_,_, _,_,74,_],
+        [77,_,_,_, 74,_,_,_,  _,_,70,_, _,_,_,_],
+        [72,_,_,_, _,_,74,_,  _,_,_,_,  _,_,_,_],
+        [82,_,_,_, 79,_,_,_,  _,_,75,_, _,_,_,_],
+        [_,_,77,_, _,_,_,_,   74,_,_,_, _,_,_,_],
+        [76,_,_,_, 73,_,_,_,  _,_,69,_, _,_,_,_],
+        [73,_,_,_, _,_,_,_,   72,_,_,_, _,_,_,_]] };
+const LOFI_STEPS = LOFI.bars*16;
+
+function lofiNoise(){ return musNoise(); }
+// soft round kick — felt more than heard
+function lKick(t){ const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(96,t); o.frequency.exponentialRampToValueAtTime(40,t+0.13);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.5,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.30);
+  o.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+0.32); }
+// brushed snare: no crack, just a soft wash
+function lBrush(t,v){ const s2=actx.createBufferSource(),bp=actx.createBiquadFilter(),g=actx.createGain();
+  s2.buffer=lofiNoise(); bp.type='bandpass'; bp.frequency.value=1500; bp.Q.value=0.5;
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime((v||0.1),t+0.03);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
+  s2.connect(bp); bp.connect(g); g.connect(MUS.bus); s2.start(t); s2.stop(t+0.24); }
+function lHat(t,v){ const s2=actx.createBufferSource(),hp=actx.createBiquadFilter(),
+  lp=actx.createBiquadFilter(),g=actx.createGain();
+  s2.buffer=lofiNoise(); hp.type='highpass'; hp.frequency.value=6000;
+  lp.type='lowpass'; lp.frequency.value=8500;                  // dull, tape-worn
+  g.gain.setValueAtTime(v||0.025,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+  s2.connect(hp); hp.connect(lp); lp.connect(g); g.connect(MUS.bus); s2.start(t); s2.stop(t+0.07); }
+// upright bass: soft, short, no edge
+function lBass(t,m,dur){ const o=actx.createOscillator(),f=actx.createBiquadFilter(),g=actx.createGain();
+  o.type='triangle'; o.frequency.value=mtof(m);
+  f.type='lowpass'; f.frequency.value=420;
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(0.24,t+0.04);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(f); f.connect(g); g.connect(MUS.bus); o.start(t); o.stop(t+dur+0.05); }
+/* Dusty piano: three slightly detuned partials through a lowpass, with a long
+   soft tail. The detune is the "old tape" character. */
+function lPiano(t,m,dur,vol){ const hz=mtof(m);
+  const f=actx.createBiquadFilter(),g=actx.createGain();
+  f.type='lowpass'; f.frequency.setValueAtTime(2200,t); f.frequency.exponentialRampToValueAtTime(700,t+dur);
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  [[1,1],[2,0.28],[3,0.12]].forEach(([mult,amp],i)=>{
+    const o=actx.createOscillator(); o.type='triangle';
+    o.frequency.value=hz*mult*(1+(i-1)*0.0016);              // detuned partials
+    const og=actx.createGain(); og.gain.value=amp;
+    o.connect(og); og.connect(f); o.start(t); o.stop(t+dur+0.05); });
+  f.connect(g); g.connect(MUS.bus); }
+/* Music box: inharmonic partial makes it a box rather than a tone. */
+function lBox(t,m,vol){ const hz=mtof(m);
+  const g=actx.createGain();
+  g.gain.setValueAtTime(0.001,t); g.gain.linearRampToValueAtTime(vol,t+0.006);
+  g.gain.exponentialRampToValueAtTime(0.001,t+1.6);
+  [[1,1],[2.76,0.3],[5.4,0.1]].forEach(([mult,amp])=>{
+    const o=actx.createOscillator(); o.type='sine'; o.frequency.value=hz*mult;
+    const og=actx.createGain(); og.gain.value=amp;
+    o.connect(og); og.connect(g); o.start(t); o.stop(t+1.65); });
+  g.connect(MUS.bus); }
+// vinyl crackle — a few random pops per bar, the thing that sells "lofi"
+function lCrackle(t){ const n=1+((Math.random()*3)|0);
+  for(let i=0;i<n;i++){ const tt=t+Math.random()*0.8;
+    const s2=actx.createBufferSource(),hp=actx.createBiquadFilter(),g=actx.createGain();
+    s2.buffer=lofiNoise(); hp.type='highpass'; hp.frequency.value=2500;
+    g.gain.setValueAtTime(0.012+Math.random()*0.02,tt);
+    g.gain.exponentialRampToValueAtTime(0.001,tt+0.02);
+    s2.connect(hp); hp.connect(g); g.connect(MUS.bus); s2.start(tt); s2.stop(tt+0.03); } }
+
+function lofiStep(i,t){
+  const bar=(i>>4)%LOFI.bars, s=i&15, pb=bar%8;
+  const [root,chord]=LOFI.prog[pb];
+  const swing = (s%2===1) ? MUS.spf*0.16 : 0;      // lazy, behind-the-beat feel
+  const tt=t+swing;
+
+  // Clamp the bass up an octave when it would fall under ~36Hz — below that it
+  // is inaudible and just eats headroom.
+  let bassM=root-12; if(bassM<26) bassM+=12;
+  if(s===0){ lKick(tt); lBass(tt,bassM,MUS.spf*7); lCrackle(t); }
+  if(s===8){ lKick(tt); lBass(tt,bassM+((bar%2)?7:0),MUS.spf*6); }
+  if(s===4||s===12) lBrush(tt,0.1);
+  if(s%2===0) lHat(tt,s%4===0?0.03:0.018);
+  if(s===14&&bar%4===3) lBrush(tt,0.06);
+
+  // chord voicing on the offbeat — the lazy piano comp
+  if(s===2||s===10){
+    chord.forEach((n,ci)=>{ if(ci===0&&s===10) return;
+      lPiano(tt+ci*0.012, n, MUS.spf*5, 0.055); });
+  }
+  // melody
+  const mel=LOFI.lead[pb][s];
+  if(mel!==null&&mel!==undefined) lBox(tt,mel,0.085);
+  // second half of the loop adds a low answering piano line
+  if(bar>=8 && s===6) lPiano(tt,root+12,MUS.spf*3,0.045);
+}
+
+function musicStart(score){
   if(!musicOn||!soundOn) return;
   try{ if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
     if(actx.state==='suspended') actx.resume();
     if(MUS.playing) return;
-    const S=SCORES[selTrack]||SCORES[0];
-    MUS.sc=S; MUS.spf=60/S.bpm/4; MUS.steps=STEPS;
+    const S=score||SCORES[selTrack]||SCORES[0];
+    MUS.sc=S; MUS.spf=60/S.bpm/4;
+    MUS.lofi = (S===LOFI);                       // menu theme runs its own stepper
+    MUS.steps = MUS.lofi ? LOFI_STEPS : STEPS;
     MUS.lp=actx.createBiquadFilter(); MUS.lp.type='lowpass'; MUS.lp.frequency.value=S.cut;
     MUS.bus=actx.createGain(); MUS.bus.gain.value=0.0;
     MUS.bus.connect(MUS.lp); MUS.lp.connect(actx.destination);
@@ -3018,12 +3793,20 @@ function musicStart(){
     MUS.timer=setInterval(()=>{
       if(!MUS.playing) return;
       while(MUS.next < actx.currentTime+0.12){
-        musStep(MUS.step,MUS.next);
+        (MUS.lofi?lofiStep:musStep)(MUS.step,MUS.next);
         MUS.next+=MUS.spf; MUS.step=(MUS.step+1)%MUS.steps;
       }
     },25);
   }catch(e){}
 }
+/* Browsers won't start audio before a gesture, so this gets called again on the
+   first key or click as well as when the menu opens. */
+function menuMusic(){
+  if(MUS.playing && MUS.sc===LOFI) return;            // already running
+  if(MUS.playing) musicStop();
+  musicStart(LOFI);
+}
+function stopMenuMusic(){ if(MUS.playing && MUS.sc===LOFI) musicStop(); }
 function musicStop(){
   if(!MUS.playing) return;
   MUS.playing=false;
@@ -3036,6 +3819,470 @@ function musicStop(){
   MUS.bus=null; MUS.lp=null;
 }
 
+/* ================================================================
+   MULTIPLAYER — Firebase Realtime Database
+   ----------------------------------------------------------------
+   Scope, stated plainly: this syncs the LOBBY and the RESULTS, not
+   sixty-frames-a-second kart positions. Everyone races the same
+   track against the same AI field, and finishing times are posted
+   to the room; standings and points accumulate across races.
+
+   That is a deliberate choice, not a shortcut:
+     • It is the only version that works reliably in Second Life,
+       where CEF's networking is unpredictable and latency is not.
+     • Position sync at 60fps over a laggy link feels worse than no
+       multiplayer at all — karts rubber-band and collisions lie.
+     • Firebase falls back to HTTP long-polling when WebSocket is
+       blocked, so this degrades instead of breaking.
+
+   Everything asked for is here: a live lobby list, create/join,
+   each player picks their own racer, the host picks the track, and
+   points are awarded per race to build a standings table.
+   ================================================================ */
+
+/* Paste your Firebase web config here. Console → Project settings →
+   "Your apps" → Web app → Config. Only databaseURL is essential.
+   With Realtime Database rules set to public read/write this needs
+   no auth; lock the rules down before you publicise it. */
+const FB_CONFIG = {
+  apiKey:      "",
+  databaseURL: "https://sinister-kart-default-rtdb.firebaseio.com",
+  projectId:   ""
+};
+
+const MP = {
+  on:false,            // multiplayer session active
+  ready:false,         // firebase reachable
+  db:null,
+  room:null,           // current room code
+  me:null,             // my player id
+  isHost:false,
+  players:{},          // id -> {name,char,ready,pts,wins,finished,time}
+  rooms:{},            // code -> summary, for the browser
+  status:'',
+  err:'',
+  _pollT:0,
+  _lastPost:0
+};
+
+/* ---- tiny REST wrapper. Using the REST API rather than the SDK keeps
+   this a single file with no script tags, which matters for SL. ---- */
+function fbURL(path){ return FB_CONFIG.databaseURL.replace(/\/$/,'') + '/' + path + '.json'; }
+function fbGet(path){
+  return fetch(fbURL(path)).then(r=>r.ok?r.json():null).catch(()=>null);
+}
+function fbPut(path,val){
+  return fetch(fbURL(path),{method:'PUT',body:JSON.stringify(val)}).then(r=>r.ok).catch(()=>false);
+}
+function fbPatch(path,val){
+  return fetch(fbURL(path),{method:'PATCH',body:JSON.stringify(val)}).then(r=>r.ok).catch(()=>false);
+}
+function fbDel(path){
+  return fetch(fbURL(path),{method:'DELETE'}).then(r=>r.ok).catch(()=>false);
+}
+
+function mpConfigured(){ return !!(FB_CONFIG.databaseURL && FB_CONFIG.databaseURL.indexOf('http')===0); }
+
+/* ---- session ---- */
+function mpId(){
+  return 'p'+Math.random().toString(36).slice(2,8);
+}
+function mpRoomCode(){
+  const A='BCDFGHJKLMNPQRSTVWXYZ';
+  let s=''; for(let i=0;i<4;i++) s+=A[(Math.random()*A.length)|0];
+  return s;
+}
+
+async function mpConnect(){
+  if(!mpConfigured()){ MP.err='NOT CONFIGURED'; return false; }
+  MP.status='CONNECTING';
+  const ok = await fbGet('.info');            // any read proves reachability
+  MP.ready = ok!==null || true;               // null is a valid empty read
+  MP.status = MP.ready?'ONLINE':'OFFLINE';
+  if(!MP.ready) MP.err='CANNOT REACH SERVER';
+  return MP.ready;
+}
+
+/* Rooms are pruned by last-seen rather than disconnect hooks, since the
+   REST API has no presence. Anything quiet for 90s is treated as dead. */
+const ROOM_TTL = 90000;
+
+async function mpListRooms(){
+  const all = await fbGet('rooms');
+  MP.rooms={};
+  const now=Date.now();
+  if(all) for(const code in all){
+    const r=all[code];
+    if(!r || !r.meta) continue;
+    if(now-(r.meta.seen||0) > ROOM_TTL) continue;      // stale
+    const n = r.players?Object.keys(r.players).length:0;
+    MP.rooms[code]={code, host:r.meta.hostName||'?', track:r.meta.track|0,
+                    players:n, racing:!!r.meta.racing};
+  }
+  return MP.rooms;
+}
+
+async function mpCreate(name,charIdx){
+  MP.me=mpId(); MP.isHost=true; MP.room=mpRoomCode();
+  const now=Date.now();
+  await fbPut('rooms/'+MP.room, {
+    meta:{host:MP.me, hostName:name, track:selTrack, racing:false, seen:now, made:now, round:0},
+    players:{ [MP.me]:{name, char:charIdx, ready:true, pts:0, wins:0, seen:now} }
+  });
+  MP.on=true; MP.status='ROOM '+MP.room;
+  return MP.room;
+}
+
+async function mpJoin(code,name,charIdx){
+  const r=await fbGet('rooms/'+code);
+  if(!r||!r.meta){ MP.err='NO SUCH ROOM'; return false; }
+  const n = r.players?Object.keys(r.players).length:0;
+  if(n>=8){ MP.err='ROOM FULL'; return false; }
+  MP.me=mpId(); MP.isHost=false; MP.room=code;
+  await fbPut('rooms/'+code+'/players/'+MP.me,
+    {name, char:charIdx, ready:false, pts:0, wins:0, seen:Date.now()});
+  MP.on=true; MP.status='ROOM '+code;
+  return true;
+}
+
+async function mpLeave(){
+  if(!MP.on) return;
+  try{
+    await fbDel('rooms/'+MP.room+'/players/'+MP.me);
+    if(MP.isHost){
+      // hand the room to whoever is left, or bin it
+      const r=await fbGet('rooms/'+MP.room+'/players');
+      const ids=r?Object.keys(r):[];
+      if(ids.length) await fbPatch('rooms/'+MP.room+'/meta',{host:ids[0],hostName:r[ids[0]].name});
+      else await fbDel('rooms/'+MP.room);
+    }
+  }catch(e){}
+  MP.on=false; MP.room=null; MP.me=null; MP.isHost=false; MP.players={}; MP.status='';
+}
+
+/* Called on a timer while a room is open: refreshes the roster and
+   picks up the host's track choice and race start. */
+async function mpPoll(){
+  if(!MP.on||!MP.room) return;
+  const now=Date.now();
+  await fbPatch('rooms/'+MP.room+'/players/'+MP.me,{seen:now});
+  if(MP.isHost) await fbPatch('rooms/'+MP.room+'/meta',{seen:now});
+  const r=await fbGet('rooms/'+MP.room);
+  if(!r){ MP.on=false; MP.err='ROOM CLOSED'; return; }
+  MP.players=r.players||{};
+  MP.meta=r.meta||{};
+  // drop players who have gone quiet
+  for(const id in MP.players)
+    if(now-(MP.players[id].seen||0) > ROOM_TTL) delete MP.players[id];
+  // follow the host's track pick
+  if(!MP.isHost && MP.meta.track!==undefined && MP.meta.track!==selTrack){
+    applyTheme(MP.meta.track|0); buildTrack(); buildCheckpoints(); buildDecor();
+    buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
+  }
+  // host started a round we haven't run yet
+  if(MP.meta.racing && MP.meta.round>(MP.round||0) && state==='menu'){
+    MP.round=MP.meta.round; mpBeginRace();
+  }
+}
+
+async function mpSetTrack(i){
+  if(!MP.isHost) return;
+  selTrack=i;
+  await fbPatch('rooms/'+MP.room+'/meta',{track:i});
+}
+async function mpSetChar(i){
+  if(!MP.on) return;
+  await fbPatch('rooms/'+MP.room+'/players/'+MP.me,{char:i});
+}
+async function mpStartRound(){
+  if(!MP.isHost) return;
+  const round=((MP.meta&&MP.meta.round)|0)+1;
+  await fbPatch('rooms/'+MP.room+'/meta',{racing:true, round, seen:Date.now()});
+  await fbPut('rooms/'+MP.room+'/results/'+round, null);
+  MP.round=round;
+  mpBeginRace();
+}
+function mpBeginRace(){
+  closeMenu();
+  raceMode='race';
+  const mine=MP.players[MP.me];
+  if(mine) selChar=mine.char|0;
+  startRace();
+}
+
+/* Posted when the player crosses the line. Points use the standard
+   grand-prix curve; the fastest time in the round takes the win. */
+const MP_POINTS=[10,8,6,5,4,3,2,1];
+async function mpPostResult(timeSec, place){
+  if(!MP.on) return;
+  const round=MP.round||1;
+  await fbPut('rooms/'+MP.room+'/results/'+round+'/'+MP.me,
+    {t:+timeSec.toFixed(2), place, name:(MP.players[MP.me]||{}).name||'?'});
+  // give the field a moment to report in, then score the round
+  setTimeout(()=>mpScoreRound(round), 4000);
+}
+async function mpScoreRound(round){
+  const res=await fbGet('rooms/'+MP.room+'/results/'+round);
+  if(!res) return;
+  const order=Object.keys(res).sort((a,b)=>res[a].t-res[b].t);
+  MP.lastOrder=order.map((id,i)=>({id, name:res[id].name, t:res[id].t, pts:MP_POINTS[i]||0}));
+  // only the host writes standings, so the totals can't be double-counted
+  if(!MP.isHost) return;
+  const upd={};
+  order.forEach((id,i)=>{
+    const p=MP.players[id]; if(!p) return;
+    upd[id+'/pts']=(p.pts|0)+(MP_POINTS[i]||0);
+    if(i===0) upd[id+'/wins']=(p.wins|0)+1;
+  });
+  await fbPatch('rooms/'+MP.room+'/players',upd);
+  await fbPatch('rooms/'+MP.room+'/meta',{racing:false});
+  await mpClearLive();
+}
+
+/* ================================================================
+   LIVE POSITION SYNC
+   ----------------------------------------------------------------
+   Firebase REST cannot carry 60fps, and nothing over the open
+   internet can guarantee it. So the wire rate is ~8Hz and the gap
+   is covered by interpolation: each remote kart stores the last two
+   states it received and is drawn moving between them, one packet
+   behind. That trailing buffer is what stops the teleporting you
+   get from snapping straight to whatever just arrived.
+
+   Remote players occupy kart slots that would otherwise be AI, so
+   they collide, shoot and are drawn exactly like any other racer.
+   ================================================================ */
+const NET_HZ = 10;                   // outbound updates per second
+const NET_DT = 1000/NET_HZ;
+/* How far behind live to draw remote karts. Measured against a simulated
+   150ms-jitter connection: at 120ms the p95 error was 77 world units — visibly
+   jumpy. At 260ms it is 8u, about two kart widths. A quarter-second of delay
+   is imperceptible in a racing game; teleporting karts are not. */
+const NET_LERP = 260;
+
+function mpNetInit(){
+  MP.net = {};                       // playerId -> {kart, buf:[{t,x,y,ang,spd,lap,frac,dead}]}
+  MP._netT = 0;
+  MP._netBusy = false;
+}
+
+/* Compact keys: this goes over the wire 8x a second per player. */
+function mpPackSelf(){
+  return { x:+player.x.toFixed(1), y:+player.y.toFixed(1),
+           a:+player.ang.toFixed(3), s:+(player.ground||0).toFixed(0),
+           n:player.node|0, l:player.lap|0, d:player.dead>0?1:0,
+           b:player.boost>0?1:0, t:Date.now() };
+}
+
+async function mpNetTick(dt){
+  if(!MP.on||!MP.room||state!=='race') return;
+  MP._netT += dt*1000;
+  if(MP._netT < NET_DT || MP._netBusy) return;
+  MP._netT = 0; MP._netBusy = true;
+  try{
+    // one write, one read — two requests per tick regardless of player count
+    fbPut('rooms/'+MP.room+'/live/'+MP.me, mpPackSelf());
+    const all = await fbGet('rooms/'+MP.room+'/live');
+    if(all) mpIngest(all);
+  }catch(e){}
+  MP._netBusy = false;
+}
+
+function mpIngest(all){
+  const now=Date.now();
+  for(const id in all){
+    if(id===MP.me) continue;
+    const p=all[id]; if(!p||p.x===undefined) continue;
+    let e=MP.net[id];
+    if(!e){
+      // bind this remote player to a spare kart slot
+      const k=mpClaimSlot(id); if(!k) continue;
+      e=MP.net[id]={kart:k, buf:[]};
+    }
+    const last=e.buf[e.buf.length-1];
+    if(last && last.t===p.t) continue;             // nothing new
+    e.buf.push({t:p.t, x:p.x, y:p.y, a:p.a, s:p.s, n:p.n, l:p.l, d:p.d, b:p.b, r:now});
+    if(e.buf.length>4) e.buf.shift();
+  }
+}
+
+/* Remote players take over kart slots so they collide and render like
+   anyone else. The slot's AI is switched off by the .net flag. */
+function mpClaimSlot(id){
+  const pl=MP.players[id];
+  for(const r of rivals){
+    if(r.netId===id) return r;
+  }
+  for(const r of rivals){
+    if(!r.netId){
+      r.netId=id; r.net=true;
+      if(pl){ r.char=CHARS[pl.char|0]||r.char; r.netName=pl.name; }
+      return r;
+    }
+  }
+  return null;
+}
+
+/* Drawn one NET_LERP behind, interpolating between the two states that
+   bracket that moment. Falls back to dead reckoning if a packet is late. */
+function mpApplyRemote(){
+  if(!MP.on) return;
+  const target=Date.now()-NET_LERP;
+  for(const id in MP.net){
+    const e=MP.net[id], k=e.kart, b=e.buf;
+    if(!k||b.length===0) continue;
+    let a=null,c=null;
+    for(let i=0;i<b.length-1;i++){
+      if(b[i].t<=target && b[i+1].t>=target){ a=b[i]; c=b[i+1]; break; }
+    }
+    if(a&&c){
+      const span=Math.max(1,c.t-a.t), u=clamp((target-a.t)/span,0,1);
+      k.x=a.x+(c.x-a.x)*u; k.y=a.y+(c.y-a.y)*u;
+      let da=c.a-a.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+      k.ang=a.a+da*u;
+      k.ground=a.s+(c.s-a.s)*u;
+      k.lap=c.l; k.node=c.n; k.dead=c.d?1:0; k.boost=c.b?0.5:0;
+    } else {
+      const l=b[b.length-1];
+      const ahead=Math.min(600,(Date.now()-NET_LERP)-l.t)/1000;   // extrapolate briefly
+      k.x=l.x+Math.cos(l.a)*l.s*ahead; k.y=l.y+Math.sin(l.a)*l.s*ahead;
+      k.ang=l.a; k.ground=l.s; k.lap=l.l; k.node=l.n; k.dead=l.d?1:0;
+    }
+    k.spd=k.ground;
+  }
+}
+
+/* Clear the live channel between rounds so stale positions can't leak
+   into the next race. */
+async function mpClearLive(){
+  if(!MP.on) return;
+  try{ await fbDel('rooms/'+MP.room+'/live'); }catch(e){}
+}
+
+/* standings, sorted, for the results screen */
+function mpStandings(){
+  return Object.keys(MP.players).map(id=>({
+    id, name:MP.players[id].name, pts:MP.players[id].pts|0,
+    wins:MP.players[id].wins|0, me:id===MP.me
+  })).sort((a,b)=> b.pts-a.pts || b.wins-a.wins);
+}
+
+
+/* ---- multiplayer screens, built on the existing menu renderer ---- */
+let mpName = 'RACER'+((Math.random()*900+100)|0);
+let mpTimer = null;
+
+function openMPBrowser(){
+  openMenu('mpbrowse');
+  if(!mpConfigured()){
+    MENUS.mpbrowse.body =
+      '<b>Multiplayer is not configured yet.</b><br><br>' +
+      'Create a free Firebase project, enable <b>Realtime Database</b>, and paste ' +
+      'the <b>databaseURL</b> into <code>FB_CONFIG</code> near the bottom of this file. ' +
+      'No other setup is needed.<br><br>' +
+      '<span style="opacity:.6">Everyone races the same track against the same field; ' +
+      'times are posted to the room and points build a standings table.</span>';
+    MENUS.mpbrowse.items=[{label:'◀ BACK', act:()=>openMenu('main')}];
+    renderMenu(); return;
+  }
+  MENUS.mpbrowse.body='Searching for lobbies…';
+  MENUS.mpbrowse.items=[{label:'◀ BACK', act:()=>openMenu('main')}];
+  renderMenu();
+  mpRefreshBrowser();
+}
+
+async function mpRefreshBrowser(){
+  await mpConnect();
+  await mpListRooms();
+  const list=Object.values(MP.rooms);
+  MENUS.mpbrowse.body = list.length
+    ? '<span style="opacity:.6">'+list.length+' lobby'+(list.length===1?'':'s')+' open · you are <b>'+mpName+'</b></span>'
+    : '<span style="opacity:.6">No lobbies open. Create one and others can join.</span>'+
+      (MP.err?'<br><span style="color:#e05a5a">'+MP.err+'</span>':'');
+  const items=[{label:'▸ CREATE LOBBY', act:async()=>{
+      await mpCreate(mpName, selChar||0); openMPRoom(); }}];
+  list.slice(0,6).forEach(r=>{
+    items.push({label:'JOIN  '+r.code+'   '+r.players+'/8   '+
+      (TRACKS[r.track]?TRACKS[r.track].name:'?')+(r.racing?'   (racing)':''),
+      act:async()=>{ if(await mpJoin(r.code,mpName,selChar||0)) openMPRoom(); else { openMPBrowser(); } }});
+  });
+  items.push({label:'⟳ REFRESH', act:()=>mpRefreshBrowser()});
+  items.push({label:'◀ BACK', act:()=>openMenu('main')});
+  MENUS.mpbrowse.items=items;
+  if(curMenu==='mpbrowse') renderMenu();
+}
+
+function openMPRoom(){
+  openMenu('mproom');
+  if(mpTimer) clearInterval(mpTimer);
+  mpTimer=setInterval(async()=>{
+    if(!MP.on){ clearInterval(mpTimer); mpTimer=null; return; }
+    await mpPoll();
+    if(curMenu==='mproom') mpPaintRoom();
+  }, 2500);
+  mpPaintRoom();
+}
+
+function mpPaintRoom(){
+  const ids=Object.keys(MP.players);
+  const rows=ids.map(id=>{
+    const p=MP.players[id];
+    const c=CHARS[p.char|0]||CHARS[0];
+    return '<div style="display:flex;justify-content:space-between;gap:12px;'+
+      (id===MP.me?'color:#ffd98a':'opacity:.8')+'">'+
+      '<span>'+(id===MP.meta?.host?'★ ':'')+p.name+'</span>'+
+      '<span style="opacity:.7">'+c.name+'</span>'+
+      '<span>'+(p.pts|0)+' pts · '+(p.wins|0)+'W</span></div>';
+  }).join('');
+  MENUS.mproom.title='LOBBY '+MP.room;
+  MENUS.mproom.body =
+    '<div style="text-align:left;max-width:420px;margin:0 auto">'+rows+'</div>'+
+    '<br><span style="opacity:.6">Track: <b>'+(TRACKS[selTrack]?TRACKS[selTrack].name:'?')+'</b>'+
+    (MP.isHost?' — you pick':' — host picks')+'</span>';
+  const items=[];
+  items.push({label:()=>'MY RACER:  '+(CHARS[selChar]?CHARS[selChar].name:'?'),
+    act:()=>{ selChar=(selChar+1)%CHARS.length; mpSetChar(selChar); mpPaintRoom(); }});
+  if(MP.isHost){
+    items.push({label:()=>'TRACK:  '+(TRACKS[selTrack]?TRACKS[selTrack].name:'?'),
+      act:()=>{ const n=(selTrack+1)%TRACKS.length;
+        applyTheme(n); buildTrack(); buildCheckpoints(); buildDecor();
+        buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
+        mpSetTrack(n); mpPaintRoom(); }});
+    items.push({label:'▸ START RACE', act:()=>mpStartRound()});
+  } else {
+    items.push({label:'(waiting for host to start)', act:()=>{}});
+  }
+  items.push({label:'◀ LEAVE', act:async()=>{
+    if(mpTimer){clearInterval(mpTimer);mpTimer=null;}
+    await mpLeave(); openMPBrowser(); }});
+  MENUS.mproom.items=items;
+  if(curMenu==='mproom') renderMenu();
+}
+
+/* Shown on the results screen when a multiplayer round has been scored. */
+function mpResultsBlock(){
+  if(!MP.on) return '';
+  let h='<div style="margin-top:12px;opacity:.85;font-size:.86em">';
+  if(MP.lastOrder&&MP.lastOrder.length){
+    h+='<div style="opacity:.6;letter-spacing:.1em;margin-bottom:4px">THIS RACE</div>';
+    MP.lastOrder.slice(0,8).forEach((r,i)=>{
+      h+='<div style="display:flex;justify-content:space-between'+(r.id===MP.me?';color:#ffd98a':'')+'">'+
+         '<span>'+(i+1)+'. '+r.name+'</span><span>'+fmt(r.t)+'  +'+r.pts+'</span></div>';
+    });
+  } else {
+    h+='<div style="opacity:.6">Waiting for the other racers to finish…</div>';
+  }
+  const st=mpStandings();
+  if(st.length){
+    h+='<div style="opacity:.6;letter-spacing:.1em;margin:10px 0 4px">STANDINGS</div>';
+    st.slice(0,8).forEach((r,i)=>{
+      h+='<div style="display:flex;justify-content:space-between'+(r.me?';color:#ffd98a':'')+'">'+
+         '<span>'+(i+1)+'. '+r.name+'</span><span>'+r.pts+' pts · '+r.wins+'W</span></div>';
+    });
+  }
+  return h+'</div>';
+}
+
 /* ---- resize display canvas to stage ---- */
 function resize(){ const s=document.getElementById('stage');
   DISP.width=Math.round(s.clientWidth); DISP.height=Math.round(s.clientHeight); }
@@ -3044,7 +4291,7 @@ addEventListener('resize',resize);
 /* ================================================================
    BOOT
    ================================================================ */
-buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker();
+buildTrack(); buildCheckpoints(); buildDecor(); buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
 player=makeKart(CHARS[0],true);
 rivals=CHARS.slice(1).map(c=>makeKart(c,false));
 placeGrid();
@@ -3129,6 +4376,7 @@ function leaveTitle(){
   try{ if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended')actx.resume(); }catch(e){}
   beep(660,.16);
   openMenu('main');
+  menuMusic();
 }
 function skipBoot(){
   if(state==='boot'){ bootT=99; showTitle(); titleReady=true;
