@@ -2081,16 +2081,71 @@ function updateKart(k,dt,input){
 /* ---- AI: aim a few nodes ahead along the racing line ---- */
 function aiInput(k){
   const N=CENTER.length;
-  const tgt=CENTER[(k.node+7)%N];            // aim ahead so it never stalls on a passed point
+  /* Look-ahead scales with road width. At a fixed 7 nodes the AI aimed too far
+     down the road and turned in too late for narrow circuits — measured on
+     Crystal Lake (52u half-width) it drifted 80u off line and hit the treeline
+     every lap. Looking 5 ahead with a firmer gain holds it to 37u. */
+  const LOOK = ROADW<60 ? 5 : 7;
+  const tgt=CENTER[(k.node+LOOK)%N];         // aim ahead so it never stalls on a passed point
   const far=CENTER[(k.node+17)%N];           // read the upcoming bend for braking
   const want=Math.atan2(tgt.y-k.y, tgt.x-k.x);
   let diff=want-k.ang; while(diff>Math.PI)diff-=2*Math.PI; while(diff<-Math.PI)diff+=2*Math.PI;
   let ahead=Math.atan2(far.y-k.y, far.x-k.x)-k.ang;
   while(ahead>Math.PI)ahead-=2*Math.PI; while(ahead<-Math.PI)ahead+=2*Math.PI;
-  const steer=clamp(diff*1.6,-1,1);
+  let steer=clamp(diff*(ROADW<60?2.2:1.6),-1,1);
+
+  /* ---- hazard avoidance ----
+     The AI aimed purely at the centreline and had no idea the hazards existed,
+     so it drove straight into every spike strip — they sit at ROADW-8, right
+     on its racing line. It now looks a short way up the road, works out which
+     side each threat occupies, and steers for the gap. */
+  const N2=CENTER.length;
+  let dodge=0, jump=false;
+  const myLat=(()=>{ const f=frameAt(k.node,N2);
+    return (k.x-f.a.x)*f.nx + (k.y-f.a.y)*f.ny; })();
+  for(const o of TOBJ){
+    if(o.type==='box') continue;
+    let d=((o.node-k.node)%N2+N2)%N2;             // nodes ahead
+    if(d>26) continue;                            // too far to matter yet
+    const f=frameAt(o.node,N2);
+    const oLat=(o.x-f.a.x)*f.nx + (o.y-f.a.y)*f.ny;
+    if(o.type==='spike'){
+      const half=TOBJ_SIZE.spike.width/2 + 10;
+      if(Math.abs(myLat-oLat) < half){            // on a collision line
+        // pull toward whichever side has more room
+        const away = (oLat>0? -1 : 1);
+        const urgency = 1 - d/26;
+        dodge += away * (0.9 + urgency*1.4);
+      }
+    } else if(o.type==='ramp'){
+      // ramps are useful: line up if it's roughly ahead and we have the speed
+      if(Math.abs(myLat-oLat) < 34 && d<12 && Math.abs(k.spd)>150) jump=true;
+    }
+  }
+  // a spike right on top of us and no time to steer — jump it instead
+  for(const o of TOBJ){
+    if(o.type!=='spike') continue;
+    let d=((o.node-k.node)%N2+N2)%N2;
+    if(d>5) continue;
+    const f=frameAt(o.node,N2);
+    const oLat=(o.x-f.a.x)*f.nx + (o.y-f.a.y)*f.ny;
+    if(Math.abs(myLat-oLat) < TOBJ_SIZE.spike.width/2 + 6) jump=true;
+  }
+  /* Dodging must never push a kart off the road — on tracks where leaving it
+     is fatal (Crystal Lake's treeline) that trades one death for another.
+     The margin scales with road width, and the correction gets progressively
+     cancelled near the edge rather than snapping off at a threshold. */
+  if(dodge) steer=clamp(steer + clamp(dodge,-1.2,1.2), -1, 1);
+  const safe=ROADW*0.55;
+  if(Math.abs(myLat)>safe){
+    const over=Math.min(1,(Math.abs(myLat)-safe)/(ROADW*0.35));
+    const inward=myLat>0?-1:1;
+    steer = steer*(1-over) + inward*over;      // steadily steer back to the middle
+  }
+
   const gas = Math.abs(ahead)<1.1*DIFF;      // ease off entering sharp bends — later, at higher DIFF
   const brake = Math.abs(ahead)>1.35*DIFF && Math.abs(k.spd)>120*DIFF;
-  return {gas, brake, steer, hop:false, boost:(k.meter>0.7/DIFF && Math.abs(ahead)<0.35*DIFF)};
+  return {gas, brake, steer, hop:jump, boost:(k.meter>0.7/DIFF && Math.abs(ahead)<0.35*DIFF)};
 }
 
 /* ---- lap / progress ---- */
@@ -2648,7 +2703,13 @@ function menuMove(d){ const n=MENUS[curMenu].items.length; if(!n) return;   // g
   menuSel=(menuSel+d+n)%n; paintMenuSel(); beep(560,.05); }
 function menuActivate(){ const it=MENUS[curMenu].items[menuSel]; if(!it||!it.act) return;
   beep(760,.08); it.act(); }
-function pauseRace(){ engineStop(); musicStop(); openMenu('pause'); }
+/* You cannot pause a race other people are in. Rather than pretending — which
+   left the world running behind a menu while you sat blind — multiplayer gets
+   no pause at all, just a hint that ESC will quit. */
+function pauseRace(){
+  if(MP.on){ flashMsg('NO PAUSE IN MULTIPLAYER'); return; }
+  engineStop(); musicStop(); openMenu('pause');
+}
 function resumeRace(){ closeMenu(); state='race'; last=performance.now(); engineStart(); musicStart(); }
 function quitToMenu(){ closeMenu(); engineStop(); musicStop();
   if(MP.on){ if(mpTimer){clearInterval(mpTimer);mpTimer=null;} mpLeave(); }
@@ -3135,6 +3196,7 @@ addEventListener('keydown',e=>{
   const t=keyTok(e); if(!t) return;
   if(state==='boot'){ e.preventDefault(); menuMusic(); skipBoot(); return; }   // impatient players
   if(state==='title'){ e.preventDefault(); leaveTitle(); return; }   // any key = start
+  if(mpTyping && state==='menu'){ e.preventDefault(); mpTypeKey(e); return; }
   if(state==='menu'||state==='pause'){
     if(isAct(t,'up')){ e.preventDefault(); menuMove(-1); }
     else if(isAct(t,'down')){ e.preventDefault(); menuMove(1); }
@@ -3159,7 +3221,13 @@ addEventListener('keydown',e=>{
     return;
   }
   if(state==='finish'){ if(isAct(t,'ok')){ e.preventDefault(); onAgain(); } else if(isAct(t,'back')){ raceMode='race'; openMenu('main'); } return; }
-  if(state==='race'&&isAct(t,'back')){ e.preventDefault(); pauseRace(); return; }
+  if(state==='race'&&isAct(t,'back')){ e.preventDefault();
+    if(MP.on){                                  // ESC twice within 2s leaves the race
+      if(MP._escT && Date.now()-MP._escT<2000){ MP._escT=0; quitToMenu(); }
+      else { MP._escT=Date.now(); flashMsg('ESC AGAIN TO QUIT'); }
+      return;
+    }
+    pauseRace(); return; }
   const k=DRIVE[t];
   if(k){ e.preventDefault(); keysSeen=true;
     if(k==='hop') keys.hop=true;
@@ -3907,7 +3975,8 @@ async function mpConnect(){
 
 /* Rooms are pruned by last-seen rather than disconnect hooks, since the
    REST API has no presence. Anything quiet for 90s is treated as dead. */
-const ROOM_TTL = 90000;
+const ROOM_TTL = 90000;      // a room with no activity at all is hidden from the list
+const PLAYER_TTL = 12000;    // a player silent this long has left; poll is every 2.5s
 
 async function mpListRooms(){
   const all = await fbGet('rooms');
@@ -3918,17 +3987,19 @@ async function mpListRooms(){
     if(!r || !r.meta) continue;
     if(now-(r.meta.seen||0) > ROOM_TTL) continue;      // stale
     const n = r.players?Object.keys(r.players).length:0;
-    MP.rooms[code]={code, host:r.meta.hostName||'?', track:r.meta.track|0,
-                    players:n, racing:!!r.meta.racing};
+    MP.rooms[code]={code, host:r.meta.hostName||'?', title:r.meta.title||r.meta.hostName||code,
+                    track:r.meta.track|0, players:n, racing:!!r.meta.racing};
   }
   return MP.rooms;
 }
 
-async function mpCreate(name,charIdx){
+async function mpCreate(name,charIdx,title){
   MP.me=mpId(); MP.isHost=true; MP.room=mpRoomCode();
   const now=Date.now();
+  const t=(title||'').trim() || (name+"'S LOBBY");
+  MP.title=t;
   await fbPut('rooms/'+MP.room, {
-    meta:{host:MP.me, hostName:name, track:selTrack, racing:false, seen:now, made:now, round:0},
+    meta:{host:MP.me, hostName:name, title:t, track:selTrack, racing:false, seen:now, made:now, round:0},
     players:{ [MP.me]:{name, char:charIdx, ready:true, pts:0, wins:0, seen:now} }
   });
   MP.on=true; MP.status='ROOM '+MP.room;
@@ -3973,9 +4044,42 @@ async function mpPoll(){
   if(!r){ MP.on=false; MP.err='ROOM CLOSED'; return; }
   MP.players=r.players||{};
   MP.meta=r.meta||{};
-  // drop players who have gone quiet
+
+  /* ---- prune the departed ----
+     Closing a tab does not tell the server anything, so anyone who has not
+     checked in for a while is treated as gone. Previously they were only
+     dropped from the local view, so ghosts lingered in the room for everyone
+     else and the seat was never freed. */
+  const gone=[];
   for(const id in MP.players)
-    if(now-(MP.players[id].seen||0) > ROOM_TTL) delete MP.players[id];
+    if(now-(MP.players[id].seen||0) > PLAYER_TTL){ gone.push(id); delete MP.players[id]; }
+
+  /* ---- host migration ----
+     If the host vanishes — crash, closed tab, lost connection — the room would
+     sit there unable to start another round. The remaining players agree on a
+     successor without needing to negotiate: sort the surviving ids and the
+     first one takes over. Everyone computes the same answer, so exactly one
+     player promotes itself and there is no race to claim it. */
+  const hostId=MP.meta.host;
+  const hostGone = !hostId || !MP.players[hostId];
+  if(hostGone){
+    const alive=Object.keys(MP.players).sort();
+    if(alive.length && alive[0]===MP.me){
+      MP.isHost=true;
+      await fbPatch('rooms/'+MP.room+'/meta',
+        {host:MP.me, hostName:(MP.players[MP.me]||{}).name||'?', seen:now});
+      flashMsg('YOU ARE NOW HOST');
+      // whoever promotes also clears out the ghosts
+      for(const id of gone) fbDel('rooms/'+MP.room+'/players/'+id);
+    } else if(alive.length===0){
+      await fbDel('rooms/'+MP.room);          // nobody left, bin the room
+      MP.on=false; MP.err='ROOM CLOSED'; return;
+    }
+  } else if(MP.isHost && hostId!==MP.me){
+    MP.isHost=false;                          // someone else holds it now
+  } else if(MP.isHost){
+    for(const id of gone) fbDel('rooms/'+MP.room+'/players/'+id);
+  }
   // follow the host's track pick
   if(!MP.isHost && MP.meta.track!==undefined && MP.meta.track!==selTrack){
     applyTheme(MP.meta.track|0); buildTrack(); buildCheckpoints(); buildDecor();
@@ -4020,8 +4124,20 @@ async function mpPostResult(timeSec, place){
   const round=MP.round||1;
   await fbPut('rooms/'+MP.room+'/results/'+round+'/'+MP.me,
     {t:+timeSec.toFixed(2), place, name:(MP.players[MP.me]||{}).name||'?'});
-  // give the field a moment to report in, then score the round
-  setTimeout(()=>mpScoreRound(round), 4000);
+  /* Wait for the rest of the field rather than scoring on the first finisher,
+     but cap it — anyone who quit is never going to report a time, and the round
+     must still close. Re-checks until everyone still present has reported. */
+  let waited=0;
+  const poll=setInterval(async()=>{
+    waited+=2000;
+    const res=await fbGet('rooms/'+MP.room+'/results/'+round);
+    const reported=res?Object.keys(res).length:0;
+    const present=Object.keys(MP.players).length;
+    if(reported>=present || waited>=20000){      // all in, or 20s grace
+      clearInterval(poll);
+      mpScoreRound(round);
+    }
+  }, 2000);
 }
 async function mpScoreRound(round){
   const res=await fbGet('rooms/'+MP.room+'/results/'+round);
@@ -4032,7 +4148,7 @@ async function mpScoreRound(round){
   if(!MP.isHost) return;
   const upd={};
   order.forEach((id,i)=>{
-    const p=MP.players[id]; if(!p) return;
+    const p=MP.players[id]; if(!p) return;      // left the room — no points to award
     upd[id+'/pts']=(p.pts|0)+(MP_POINTS[i]||0);
     if(i===0) upd[id+'/wins']=(p.wins|0)+1;
   });
@@ -4110,11 +4226,23 @@ function mpIngest(all){
 
 /* Remote players take over kart slots so they collide and render like
    anyone else. The slot's AI is switched off by the .net flag. */
+/* Remote players take over AI slots, so the grid is always 8 karts however
+   many humans are in the room — join and an AI steps aside for you.
+   Slots are matched to the character each player picked in the lobby, so
+   you race as the racer you chose rather than whichever slot was free. */
 function mpClaimSlot(id){
   const pl=MP.players[id];
-  for(const r of rivals){
-    if(r.netId===id) return r;
+  for(const r of rivals) if(r.netId===id) return r;
+  // first choice: the kart matching the character this player picked
+  if(pl){
+    const want=CHARS[pl.char|0];
+    if(want) for(const r of rivals){
+      if(!r.netId && r.char && r.char.name===want.name){
+        r.netId=id; r.net=true; r.netName=pl.name; return r;
+      }
+    }
   }
+  // otherwise any free slot, repainted as their character
   for(const r of rivals){
     if(!r.netId){
       r.netId=id; r.net=true;
@@ -4130,9 +4258,19 @@ function mpClaimSlot(id){
 function mpApplyRemote(){
   if(!MP.on) return;
   const target=Date.now()-NET_LERP;
+  const now=Date.now();
   for(const id in MP.net){
     const e=MP.net[id], k=e.kart, b=e.buf;
     if(!k||b.length===0) continue;
+    /* Someone who quit mid-race stops broadcasting. Their kart would otherwise
+       freeze on the racing line as an invisible wall, so hand the slot back to
+       the AI and let it finish the race — the field stays full and nobody is
+       blocked by a ghost. */
+    if(now-(b[b.length-1].r||0) > 5000){
+      k.net=false; k.netId=null; k.netName=null;   // AI resumes control
+      delete MP.net[id];
+      continue;
+    }
     let a=null,c=null;
     for(let i=0;i<b.length-1;i++){
       if(b[i].t<=target && b[i+1].t>=target){ a=b[i]; c=b[i+1]; break; }
@@ -4172,8 +4310,71 @@ function mpStandings(){
 
 /* ---- multiplayer screens, built on the existing menu renderer ---- */
 let mpName = 'RACER'+((Math.random()*900+100)|0);
+let mpLobbyName = '';
+let mpTyping = null;          // which field has focus: 'name' | 'lobby' | null
+
+/* Text entry. The global key handler drives the menus, so while a field is
+   focused it must hand every keystroke to the field instead — otherwise
+   typing 'W' would scroll the menu. */
+function mpTypeKey(e){
+  if(!mpTyping) return false;
+  const k = e.key;
+  if(k==='Enter'){ mpBlur(); return true; }
+  if(k==='Escape'){ mpBlur(); return true; }
+  if(k==='Backspace'){
+    if(mpTyping==='name') mpName=mpName.slice(0,-1); else mpLobbyName=mpLobbyName.slice(0,-1);
+    mpPaintField(); return true;
+  }
+  if(k && k.length===1){
+    const cur = mpTyping==='name'?mpName:mpLobbyName;
+    if(cur.length<14){
+      const ch=k.toUpperCase();
+      if(/[A-Z0-9 _\-]/.test(ch)){
+        if(mpTyping==='name') mpName=cur+ch; else mpLobbyName=cur+ch;
+        mpPaintField();
+      }
+    }
+    return true;
+  }
+  return true;               // swallow everything else while typing
+}
+function mpFocus(which){ mpTyping=which; mpPaintField(); }
+function mpBlur(){ mpTyping=null; if(!mpName.trim()) mpName='RACER'+((Math.random()*900+100)|0); mpPaintField(); }
+function mpPaintField(){ if(curMenu==='mpbrowse') mpRenderBrowser(); }
 let mpTimer = null;
 
+/* The browser screen is rebuilt through here so the name fields, the lobby
+   list and the buttons stay in one place and can repaint independently. */
+function mpRenderBrowser(){
+  const cur=(f)=>{
+    const v = f==='name'?mpName:mpLobbyName;
+    const ph = f==='name'?'(tap to type)':'(optional)';
+    const shown = v || ph;
+    return (mpTyping===f? shown+'▌' : shown);
+  };
+  const items=[
+    {label:()=>'YOUR NAME:  '+cur('name'), act:()=>mpFocus(mpTyping==='name'?null:'name')},
+    {label:()=>'LOBBY NAME: '+cur('lobby'), act:()=>mpFocus(mpTyping==='lobby'?null:'lobby')},
+    {label:'▸ CREATE LOBBY', act:async()=>{ mpBlur(); await mpCreate(mpName, selIdx||0, mpLobbyName); openMPRoom(); }}
+  ];
+  const list=Object.values(MP.rooms||{});
+  list.slice(0,5).forEach(r=>{
+    items.push({label:'JOIN  '+(r.title||r.code)+'   '+r.players+'/8   '+
+      (TRACKS[r.track]?TRACKS[r.track].name:'?')+(r.racing?'   (racing)':''),
+      act:async()=>{ mpBlur(); if(await mpJoin(r.code,mpName,selIdx||0)) openMPRoom(); else mpRefreshBrowser(); }});
+  });
+  items.push({label:'⟳ REFRESH', act:()=>{ mpBlur(); mpRefreshBrowser(); }});
+  items.push({label:'◀ BACK', act:()=>{ mpBlur(); openMenu('main'); }});
+  MENUS.mpbrowse.items=items;
+  if(menuSel>=items.length) menuSel=0;
+  MENUS.mpbrowse.body = mpTyping
+    ? '<span style="color:#ffd98a">Type a '+(mpTyping==='name'?'racer':'lobby')+' name · ENTER when done</span>'
+    : (list.length
+        ? '<span style="opacity:.6">'+list.length+' lobby'+(list.length===1?'':'s')+' open</span>'
+        : '<span style="opacity:.6">No lobbies open — create one and others can join.</span>')
+      + (MP.err?'<br><span style="color:#e05a5a">'+MP.err+'</span>':'');
+  if(curMenu==='mpbrowse') renderMenu();
+}
 function openMPBrowser(){
   openMenu('mpbrowse');
   if(!mpConfigured()){
@@ -4191,13 +4392,8 @@ function openMPBrowser(){
      empty item list before it returned left the menu unusable — menuMove does
      `menuSel % items.length`, which is NaN on an empty array, so nothing could
      be selected and CREATE LOBBY never appeared. */
-  MENUS.mpbrowse.body='Searching for lobbies…';
-  MENUS.mpbrowse.items=[
-    {label:'▸ CREATE LOBBY', act:async()=>{ await mpCreate(mpName, selIdx||0); openMPRoom(); }},
-    {label:'⟳ REFRESH', act:()=>mpRefreshBrowser()},
-    {label:'◀ BACK', act:()=>openMenu('main')}
-  ];
-  renderMenu();
+  mpTyping=null;
+  mpRenderBrowser();          // usable immediately, before any network work
   mpRefreshBrowser();
 }
 
@@ -4205,22 +4401,7 @@ async function mpRefreshBrowser(){
   await mpConnect();
   await mpListRooms();
   const list=Object.values(MP.rooms);
-  MENUS.mpbrowse.body = list.length
-    ? '<span style="opacity:.6">'+list.length+' lobby'+(list.length===1?'':'s')+' open · you are <b>'+mpName+'</b></span>'
-    : '<span style="opacity:.6">No lobbies open. Create one and others can join.</span>'+
-      (MP.err?'<br><span style="color:#e05a5a">'+MP.err+'</span>':'');
-  const items=[{label:'▸ CREATE LOBBY', act:async()=>{
-      await mpCreate(mpName, selIdx||0); openMPRoom(); }}];
-  list.slice(0,6).forEach(r=>{
-    items.push({label:'JOIN  '+r.code+'   '+r.players+'/8   '+
-      (TRACKS[r.track]?TRACKS[r.track].name:'?')+(r.racing?'   (racing)':''),
-      act:async()=>{ if(await mpJoin(r.code,mpName,selIdx||0)) openMPRoom(); else { openMPBrowser(); } }});
-  });
-  items.push({label:'⟳ REFRESH', act:()=>mpRefreshBrowser()});
-  items.push({label:'◀ BACK', act:()=>openMenu('main')});
-  MENUS.mpbrowse.items=items;
-  if(menuSel>=items.length) menuSel=0;      // list shrank under the cursor
-  if(curMenu==='mpbrowse') renderMenu();
+  mpRenderBrowser();
 }
 
 function openMPRoom(){
@@ -4245,7 +4426,7 @@ function mpPaintRoom(){
       '<span style="opacity:.7">'+c.name+'</span>'+
       '<span>'+(p.pts|0)+' pts · '+(p.wins|0)+'W</span></div>';
   }).join('');
-  MENUS.mproom.title='LOBBY '+MP.room;
+  MENUS.mproom.title=((MP.meta&&MP.meta.title)||MP.title||'LOBBY')+' · '+MP.room;
   MENUS.mproom.body =
     '<div style="text-align:left;max-width:420px;margin:0 auto">'+rows+'</div>'+
     '<br><span style="opacity:.6">Track: <b>'+(TRACKS[selTrack]?TRACKS[selTrack].name:'?')+'</b>'+
