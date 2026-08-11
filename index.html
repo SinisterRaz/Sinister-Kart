@@ -4003,6 +4003,7 @@ async function mpCreate(name,charIdx,title){
     players:{ [MP.me]:{name, char:charIdx, ready:true, pts:0, wins:0, seen:now} }
   });
   MP.on=true; MP.status='ROOM '+MP.room;
+  mpSyncClock(3);
   return MP.room;
 }
 
@@ -4015,6 +4016,7 @@ async function mpJoin(code,name,charIdx){
   await fbPut('rooms/'+code+'/players/'+MP.me,
     {name, char:charIdx, ready:false, pts:0, wins:0, seen:Date.now()});
   MP.on=true; MP.status='ROOM '+code;
+  await mpSyncClock(3);
   return true;
 }
 
@@ -4027,7 +4029,7 @@ async function mpLeave(){
       const r=await fbGet('rooms/'+MP.room+'/players');
       const ids=r?Object.keys(r):[];
       if(ids.length) await fbPatch('rooms/'+MP.room+'/meta',{host:ids[0],hostName:r[ids[0]].name});
-      else await fbDel('rooms/'+MP.room);
+      else await fbDel('rooms/'+MP.room);      // takes the clock scratch data with it
     }
   }catch(e){}
   MP.on=false; MP.room=null; MP.me=null; MP.isHost=false; MP.players={}; MP.status='';
@@ -4085,9 +4087,14 @@ async function mpPoll(){
     applyTheme(MP.meta.track|0); buildTrack(); buildCheckpoints(); buildDecor();
     buildTrackObjects(); buildZombies(); buildStalker(); buildArcs(); buildMob();
   }
-  // host started a round we haven't run yet
+  // host scheduled a round we haven't run yet — arm the countdown to their clock
   if(MP.meta.racing && MP.meta.round>(MP.round||0) && state==='menu'){
-    MP.round=MP.meta.round; mpBeginRace();
+    MP.round=MP.meta.round;
+    if(MP.meta.startAt){
+      if(!MP.clockOff && MP.clockOff!==0) await mpSyncClock(2);
+      if(MP.meta.startAt-mpNow() > -1500) mpArmStart(MP.meta.startAt);
+      else mpBeginRace();                     // joined too late, just go
+    } else mpBeginRace();
   }
 }
 
@@ -4100,13 +4107,71 @@ async function mpSetChar(i){
   if(!MP.on) return;
   await fbPatch('rooms/'+MP.room+'/players/'+MP.me,{char:i});
 }
+/* ================================================================
+   CLOCK SYNC
+   Machines disagree about the time — often by seconds. A start time
+   is useless unless everyone measures it against the same clock, so
+   each client asks Firebase to stamp a value with the SERVER time and
+   works out its own offset from that. Round-trip is halved out of the
+   estimate, and the best of several samples is kept (the fastest
+   round trip is the least distorted one).
+   ================================================================ */
+async function mpSyncClock(samples){
+  let best=null;
+  for(let i=0;i<(samples||3);i++){
+    const t0=Date.now();
+    // ".sv":"timestamp" tells Firebase to substitute its own clock
+    const ok=await fbPut('rooms/'+MP.room+'/clock/'+MP.me, {".sv":"timestamp"});
+    const srv=await fbGet('rooms/'+MP.room+'/clock/'+MP.me);
+    const t1=Date.now();
+    if(typeof srv!=='number') continue;
+    const rtt=t1-t0;
+    const offset=srv-(t0+rtt/2);          // server time minus our midpoint
+    if(!best||rtt<best.rtt) best={rtt,offset};
+  }
+  MP.clockOff = best?best.offset:0;
+  MP.clockRtt = best?best.rtt:0;
+  return MP.clockOff;
+}
+/* Everyone's shared idea of "now". */
+function mpNow(){ return Date.now() + (MP.clockOff||0); }
+
 async function mpStartRound(){
   if(!MP.isHost) return;
   const round=((MP.meta&&MP.meta.round)|0)+1;
-  await fbPatch('rooms/'+MP.room+'/meta',{racing:true, round, seen:Date.now()});
+  await mpSyncClock(3);
+  /* Schedule the start instead of signalling it. Everyone polls at their own
+     rhythm, so a flag meant each player began whenever their next poll landed —
+     up to a full poll interval apart. A timestamp in the near future lets every
+     client count down to the same instant. The lead has to cover one poll
+     interval plus the slowest round trip. */
+  const startAt = mpNow() + 4000;
+  await fbPatch('rooms/'+MP.room+'/meta',
+    {racing:true, round, startAt, seen:Date.now()});
   await fbPut('rooms/'+MP.room+'/results/'+round, null);
   MP.round=round;
-  mpBeginRace();
+  mpArmStart(startAt);
+}
+/* Holds the grid until the scheduled instant, then starts for everyone at once. */
+function mpArmStart(startAt){
+  if(MP._armed===startAt) return;              // already waiting on this one
+  MP._armed=startAt;
+  closeMenu();
+  const el=document.getElementById('count'), cn=document.getElementById('countN');
+  el.classList.add('show');
+  const tick=()=>{
+    if(MP._armed!==startAt) return;            // superseded
+    const left=startAt-mpNow();
+    if(left>0){
+      cn.textContent = left>1000 ? Math.ceil(left/1000) : 'GET READY';
+      setTimeout(tick, 100);
+    } else {
+      el.classList.remove('show');
+      MP._armed=null;
+      mpBeginRace();
+    }
+  };
+  tick();
 }
 function mpBeginRace(){
   closeMenu();
@@ -4411,7 +4476,7 @@ function openMPRoom(){
     if(!MP.on){ clearInterval(mpTimer); mpTimer=null; return; }
     await mpPoll();
     if(curMenu==='mproom') mpPaintRoom();
-  }, 2500);
+  }, 1200);          // brisk enough that a scheduled start is never missed
   mpPaintRoom();
 }
 
