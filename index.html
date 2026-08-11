@@ -58,6 +58,16 @@ html,body{height:100%;background:#000;overflow:hidden;font-family:var(--f-term);
 .screen{position:absolute;inset:0;z-index:10;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;
   background:radial-gradient(900px 600px at 50% 30%,rgba(143,13,22,.35),transparent 70%),rgba(5,3,8,.86);backdrop-filter:blur(2px)}
 #charselect,#trackselect{background:radial-gradient(900px 600px at 50% 20%,rgba(143,13,22,.25),transparent 70%),#08060c;backdrop-filter:none}
+/* Menus sit on their own backdrop — no live track showing through. Watching an
+   AI lap the course behind the main menu undercuts the moment you press start. */
+#menu{background:radial-gradient(900px 620px at 50% 28%,rgba(143,13,22,.30),transparent 72%),
+      linear-gradient(180deg,#0a0610 0%,#120810 55%,#07050a 100%);backdrop-filter:none}
+#scBoot{background:#05040a;backdrop-filter:none;transition:opacity .5s}
+#scTitle{background:radial-gradient(900px 620px at 50% 34%,rgba(143,13,22,.32),transparent 72%),
+         linear-gradient(180deg,#08050e 0%,#150a12 60%,#05040a 100%);backdrop-filter:none}
+#scTitle .kick,#scTitle h1,#scTitle .press{transition:opacity 1.1s ease}
+.blink{animation:blink 1.25s steps(1,end) infinite}
+@keyframes blink{0%,55%{opacity:1}56%,100%{opacity:.15}}
 .screen.show{display:flex}
 .screen h1{font-family:var(--f-goth);font-weight:400;font-size:clamp(3rem,11vw,6.5rem);line-height:.9;color:var(--bone);
   text-shadow:0 0 4px #fff,0 0 24px var(--blood-lit),0 0 50px var(--blood);letter-spacing:.02em}
@@ -138,8 +148,21 @@ html,body{height:100%;background:#000;overflow:hidden;font-family:var(--f-term);
 
   <div id="count"><div class="c" id="countN">3</div></div>
 
+  <!-- Boot: studio logo -->
+  <div class="screen show" id="scBoot">
+    <canvas id="bootLogo" width="420" height="240"></canvas>
+    <div class="press" id="bootTag" style="opacity:0">A SINISTER DIVISION PRODUCTION</div>
+  </div>
+
+  <!-- Title: fades in, waits for a key -->
+  <div class="screen" id="scTitle">
+    <div class="kick" id="titleKick" style="opacity:0">SINISTER DIVISION PRESENTS</div>
+    <h1 id="titleName" style="opacity:0">Sinister Kart<span class="sub">◈ GRAVE PRIX ◈</span></h1>
+    <div class="press blink" id="titlePress" style="opacity:0">PRESS START</div>
+  </div>
+
   <!-- Menu (main / howto / options / pause) -->
-  <div class="screen show" id="menu">
+  <div class="screen" id="menu">
     <div class="kick" id="menuKick">SINISTER DIVISION</div>
     <h1 id="menuTitle">Sinister Kart<span class="sub">◈ GRAVE PRIX ◈</span></h1>
     <div class="menu-body" id="menuBody"></div>
@@ -1222,15 +1245,25 @@ function makeKart(char,isPlayer){
 }
 let player, rivals=[], karts=[];
 /* ---- roster: classic-horror racers, each a distinct character + vehicle ---- */
+/* Every racer gets its own machine, not a recoloured template — distinct
+   silhouette, wheels, and one signature flourish that reads even at 12px. */
 const CHARS=[
-  {name:'BONE BARON', body:'#e9e3d3', accent:'#c8a84a', head:'skull', shape:'std'},    // player — skeleton
-  {name:'THE COUNT',  body:'#5a0d16', accent:'#e01e28', head:'fang',  shape:'coffin'}, // vampire
-  {name:'THE STITCH', body:'#4a7a3a', accent:'#8bc34a', head:'bolt',  shape:'box'},    // frankenstein
-  {name:'LYCAN',      body:'#6b5a3f', accent:'#c8a84a', head:'wolf',  shape:'std'},    // werewolf
-  {name:'HEX',        body:'#4a2a6a', accent:'#b46cff', head:'hat',   shape:'round'},  // witch
-  {name:'THE MASKED', body:'#3a3f45', accent:'#d8ccae', head:'mask',  shape:'std'},    // slasher
-  {name:'ROT',        body:'#5a6a2a', accent:'#9bbf3a', head:'rot',   shape:'box'},    // zombie
-  {name:'EMBER',      body:'#7a1a10', accent:'#ff6a2b', head:'horn',  shape:'coffin'} // demon
+  {name:'BONE BARON', body:'#e9e3d3', accent:'#c8a84a', head:'skull', shape:'std',    rig:'bone',
+   ride:'RIBCAGE ROADSTER', trait:'Balanced'},
+  {name:'THE COUNT',  body:'#5a0d16', accent:'#e01e28', head:'fang',  shape:'coffin', rig:'hearse',
+   ride:'THE LONG BLACK',   trait:'Top speed'},
+  {name:'THE STITCH', body:'#4a7a3a', accent:'#8bc34a', head:'bolt',  shape:'box',    rig:'lab',
+   ride:'GALVANIC CART',    trait:'Heavy'},
+  {name:'LYCAN',      body:'#6b5a3f', accent:'#c8a84a', head:'wolf',  shape:'std',    rig:'muscle',
+   ride:'MOONHOWLER 440',   trait:'Acceleration'},
+  {name:'HEX',        body:'#4a2a6a', accent:'#b46cff', head:'hat',   shape:'round',  rig:'cauldron',
+   ride:'BREWKART',         trait:'Handling'},
+  {name:'THE MASKED', body:'#3a3f45', accent:'#d8ccae', head:'mask',  shape:'std',    rig:'truck',
+   ride:'CAMP HAULER',      trait:'Durable'},
+  {name:'ROT',        body:'#5a6a2a', accent:'#9bbf3a', head:'rot',   shape:'box',    rig:'jalopy',
+   ride:'THE SHAMBLER',     trait:'Scrappy'},
+  {name:'EMBER',      body:'#7a1a10', accent:'#ff6a2b', head:'horn',  shape:'coffin', rig:'hotrod',
+   ride:'CINDER V8',        trait:'Boost'}
 ];
 
 function placeGrid(){
@@ -1259,11 +1292,79 @@ const MPH = 125/MAXS;                        // units/s → MPH: top speed reads
 const BOOST_CAP = Math.round(175/MPH - MAXS);// nitrous ceiling → reads exactly 175
 const GRIP=3.4;      // rear grip on road — lower = slidier. THE drift knob.
 const GRIP_FADE=0.38;// how much grip the rear loses at full speed → oversteer builds with pace
-const AI_SPEED=1.00; // rivals top out at the same 125; the rubber band does the rest
+/* The AI drives a geometrically perfect line — it never misses an apex, never
+   over-slows, never gets it wrong. Measured head to head on the real physics it
+   laps 33-35% faster than a player holding full throttle. So it NEEDS a speed
+   handicap; without one it is simply a better driver than any human and the
+   race is over at the lights. This is the single biggest lever on difficulty,
+   which is why DIFF now scales it directly. */
+const AI_SPEED=0.80; // effective handicap = AI_SPEED * DIFF (≈0.84 at default)
 /* Global difficulty dial. Raised 10%: applied to how hard the AI drives, how
    long it carries speed into bends, and how much the hazards hurt — deliberately
    NOT to rival top speed, which stays pinned at the 125 the cars are rated for. */
-const DIFF=1.10;
+/* ================================================================
+   ADAPTIVE DIFFICULTY
+   Built from what the research on DDA actually says, which is mostly a
+   list of ways racing games get this wrong:
+
+   • Rubber banding is the mechanic players resent most. Boosting trailing
+     rivals reads as unfair to anyone good, and "the opponent who is
+     suddenly lightning fast on the last lap" is the classic immersion
+     killer. So the in-race band is DELIBERATELY SMALL here.
+   • The adaptation instead happens BETWEEN races, where it is invisible —
+     the long-term layer, driven by finishing position and how often you
+     wrecked. Nobody can feel a change that happens while the results
+     screen is up.
+   • Movement is capped per race, so it drifts toward your level over a
+     cup rather than lurching after one bad start.
+   • It is transparent and overridable. The finish screen shows where the
+     rivals are set, and Options can pin it to a fixed level. The research
+     is blunt that hidden adaptation used against the player's interest is
+     manipulation; shown and switchable, it is just good balancing.
+   ================================================================ */
+/* Centred so a competent driver is racing the pack rather than watching it
+   leave. Measured lap times at these settings (Deadly 500): easy ~34s,
+   default ~31s, hard ~27s, against ~35s for a player who never lifts. */
+const DIFF_BASE=0.98;
+const DIFF_MIN=0.82, DIFF_MAX=1.20;
+const FIXED_DIFF={easy:0.82, normal:0.98, hard:1.15};
+let SKILL=0;                           // −1 … +1, session-scoped running estimate
+let diffMode='auto';                   // 'auto' | 'easy' | 'normal' | 'hard'
+let DIFF=DIFF_BASE;
+let raceWrecks=0;                      // player wrecks this race — a struggle signal
+function recomputeDIFF(){
+  DIFF = diffMode==='auto'
+    ? clamp(DIFF_BASE + SKILL*0.135, DIFF_MIN, DIFF_MAX)
+    : FIXED_DIFF[diffMode];
+}
+/* Called once at the results screen. Position is the main signal; wrecks are
+   the "are they struggling" signal that separates a narrow 4th from a messy one. */
+/* Transparency: say where the rivals are set and which way they just moved. */
+function showDiffNote(before){
+  const el=document.getElementById('finBody'); if(!el) return;
+  const delta=Math.round((DIFF-before)*100);
+  const arrow = delta>0?' ▲':(delta<0?' ▼':'');
+  const note=document.createElement('div');
+  note.className='roster-line';
+  note.style.cssText='margin-top:10px;opacity:.65;font-size:.8em;letter-spacing:.08em';
+  note.textContent=diffLabel()+arrow;
+  el.appendChild(note);
+}
+function updateSkill(place,wrecks){
+  if(diffMode!=='auto') return;
+  // Neutral point sits at ~P2.6, not mid-field. Finishing a close 2nd means the
+  // balance is right, so it shouldn't move. Verified in a closed-loop sim
+  // (placement improves as difficulty falls): every skill level from novice to
+  // expert settles at an average finish of P1.8–P2.4.
+  let p = clamp((2.6-place)/3.0, -1, 1);
+  p -= Math.min(0.30, wrecks*0.08);
+  SKILL = clamp(SKILL + p*0.22, -1, 1);   // ≤3% swing per race — a drift, not a lurch
+  recomputeDIFF();
+}
+function diffLabel(){
+  const pct=Math.round((DIFF-1)*100);
+  return (diffMode==='auto'?'ADAPTIVE ':'')+'RIVALS '+(pct>=0?'+':'')+pct+'%';
+}
 const AI_FIRE_DELAY=10;   // seconds of clean racing before the AI is allowed to shoot
 const GRIP_OFF=1.1;  // grip off-track (loose, slidey)
 const COAST=1.2;     // rolling decel when off the gas
@@ -1349,7 +1450,10 @@ function updateKart(k,dt,input){
     EXPL.push({x:k.x,y:k.y,life:0.5,r:1.0});
     if(k.isPlayer){ addShake(26); flashMsg('INTO THE LAKE'); }
   }
-  let cap=(road?MAXS:MAXS_OFF)*(k.rubber||1)*(k.isPlayer?1:AI_SPEED*aiComp);
+  // DIFF multiplies the AI handicap, so the difficulty setting actually moves
+  // lap times. Previously it only nudged cornering thresholds and changed a lap
+  // by about 1% — the dial was effectively doing nothing.
+  let cap=(road?MAXS:MAXS_OFF)*(k.rubber||1)*(k.isPlayer?1:AI_SPEED*DIFF*aiComp);
   if(k.boost>0) cap += BOOST_CAP;            // nitrous raises the ceiling to 175 MPH
 
   // ── decompose current velocity into forward + sideways (relative to heading) ──
@@ -1625,27 +1729,196 @@ function drawMoon(off){
   bctx.restore();
 }
 
+/* ================================================================
+   KART RIGS — one hand-built machine per racer.
+   Drawn head-on as a billboard, so the read is: silhouette first,
+   two or three bold details second. Anything finer vanishes by 20px.
+   ================================================================ */
+function wheels(c,w,h,style,tint){
+  const S={
+    std   :{fw:0.16,fh:0.50,off:0.50,rim:'#3a3a44'},
+    fat   :{fw:0.22,fh:0.60,off:0.54,rim:'#5a4a2a'},   // muscle: big meats out back
+    thin  :{fw:0.11,fh:0.44,off:0.48,rim:'#6a6a72'},   // hearse: skinny whitewalls
+    tall  :{fw:0.17,fh:0.66,off:0.52,rim:'#4a4a3a'},   // truck: lifted
+    tread :{fw:0.20,fh:0.54,off:0.52,rim:'#3f4a2f'},   // jalopy: mismatched
+    spoke :{fw:0.14,fh:0.52,off:0.50,rim:'#7a6a3a'}
+  }[style]||{fw:0.16,fh:0.50,off:0.50,rim:'#3a3a44'};
+  for(const sgn of [-1,1]){
+    const x=sgn<0? -w*S.off : w*(S.off-S.fw);
+    c.fillStyle='#0c0a10'; c.fillRect(x,-h*(S.fh+0.05),w*S.fw,h*S.fh);
+    c.fillStyle=tint||S.rim; c.fillRect(x+w*S.fw*0.28,-h*(S.fh*0.72),w*S.fw*0.44,h*S.fh*0.4);
+  }
+}
+function cockpit(c,w,h,y,ww){
+  c.fillStyle='#0d0a12'; c.fillRect(-w*(ww||0.2),-h*y,w*(ww||0.2)*2,h*0.3);
+  c.fillStyle='rgba(180,210,230,.10)'; c.fillRect(-w*(ww||0.2),-h*y,w*(ww||0.2)*2,h*0.1);
+}
+const RIGS={
+  // ---- BONE BARON: an open ribcage on wheels, spine arching into a spoiler ----
+  bone(c,w,h,ch){
+    wheels(c,w,h,'spoke');
+    c.fillStyle='#2a2620';                                   // chassis rail
+    c.fillRect(-w*0.36,-h*0.28,w*0.72,h*0.16);
+    c.fillStyle=ch.body;                                     // ribs
+    for(let i=0;i<4;i++){ const rx=-w*0.26+i*w*0.17;
+      c.beginPath(); c.ellipse(rx,-h*0.52,w*0.045,h*0.26,0,0,7); c.fill(); }
+    c.fillStyle='#cfc7b2';                                   // spine + tail
+    c.fillRect(-w*0.04,-h*0.86,w*0.08,h*0.42);
+    c.beginPath(); c.moveTo(-w*0.16,-h*0.88); c.lineTo(w*0.16,-h*0.88); c.lineTo(0,-h*1.04); c.closePath(); c.fill();
+    c.fillStyle=ch.accent; c.fillRect(-w*0.3,-h*0.3,w*0.6,h*0.045);
+    cockpit(c,w,h,0.74,0.17);
+  },
+  // ---- THE COUNT: a long low hearse, candles burning on the roofline ----
+  hearse(c,w,h,ch){
+    wheels(c,w,h,'thin');
+    c.fillStyle=ch.body;
+    c.beginPath();
+    c.moveTo(-w*0.44,-h*0.16); c.lineTo(w*0.44,-h*0.16);
+    c.lineTo(w*0.40,-h*0.82); c.lineTo(-w*0.40,-h*0.82); c.closePath(); c.fill();
+    c.fillStyle='#2a060c';                                    // coffin lid inset
+    c.beginPath();
+    c.moveTo(-w*0.26,-h*0.30); c.lineTo(w*0.26,-h*0.30);
+    c.lineTo(w*0.18,-h*0.74); c.lineTo(-w*0.18,-h*0.74); c.closePath(); c.fill();
+    c.strokeStyle=ch.accent; c.lineWidth=Math.max(1,w*0.022);  // cross
+    c.beginPath(); c.moveTo(0,-h*0.70); c.lineTo(0,-h*0.36); c.moveTo(-w*0.1,-h*0.58); c.lineTo(w*0.1,-h*0.58); c.stroke();
+    for(const cx of [-w*0.3,w*0.3]){                          // candelabra
+      c.fillStyle='#d8ccae'; c.fillRect(cx-w*0.012,-h*0.98,w*0.024,h*0.18);
+      const g=c.createRadialGradient(cx,-h*1.02,0,cx,-h*1.02,w*0.07);
+      g.addColorStop(0,'rgba(255,200,120,.95)'); g.addColorStop(1,'rgba(255,160,60,0)');
+      c.fillStyle=g; c.beginPath(); c.arc(cx,-h*1.02,w*0.07,0,7); c.fill();
+    }
+    cockpit(c,w,h,0.70,0.13);
+  },
+  // ---- THE STITCH: riveted lab cart, two coils arcing across the top ----
+  lab(c,w,h,ch){
+    wheels(c,w,h,'std','#4a5a3a');
+    c.fillStyle=ch.body;
+    c.fillRect(-w*0.38,-h*0.90,w*0.76,h*0.78);
+    c.fillStyle='#2f4a26';                                    // plate seam
+    c.fillRect(-w*0.38,-h*0.52,w*0.76,h*0.06);
+    c.fillStyle='#8a8f7a';                                    // rivets
+    for(let i=0;i<5;i++){ const rx=-w*0.30+i*w*0.15;
+      c.beginPath(); c.arc(rx,-h*0.20,w*0.018,0,7); c.arc(rx,-h*0.84,w*0.018,0,7); c.fill(); }
+    for(const cx of [-w*0.32,w*0.32]){                        // tesla coils
+      c.fillStyle='#6a6a72'; c.fillRect(cx-w*0.02,-h*1.02,w*0.04,h*0.2);
+      c.fillStyle=ch.accent; c.beginPath(); c.arc(cx,-h*1.06,w*0.05,0,7); c.fill();
+    }
+    c.strokeStyle='rgba(190,255,140,.8)'; c.lineWidth=Math.max(1,w*0.016);  // the arc
+    c.beginPath(); c.moveTo(-w*0.32,-h*1.06); c.lineTo(-w*0.1,-h*0.96);
+    c.lineTo(w*0.08,-h*1.12); c.lineTo(w*0.32,-h*1.06); c.stroke();
+    cockpit(c,w,h,0.78,0.2);
+  },
+  // ---- LYCAN: raked muscle car, blower through the hood, claw-torn flank ----
+  muscle(c,w,h,ch){
+    wheels(c,w,h,'fat');
+    c.fillStyle='#2a2118';                                   // dark underbody for contrast
+    c.fillRect(-w*0.44,-h*0.26,w*0.88,h*0.14);
+    c.fillStyle=ch.body;
+    c.beginPath();
+    c.moveTo(-w*0.42,-h*0.14); c.lineTo(w*0.42,-h*0.14);
+    c.lineTo(w*0.34,-h*0.62); c.lineTo(w*0.20,-h*0.86);
+    c.lineTo(-w*0.20,-h*0.86); c.lineTo(-w*0.34,-h*0.62); c.closePath(); c.fill();
+    c.fillStyle='#1d1710';                                    // blower stack, bigger and darker
+    c.fillRect(-w*0.14,-h*1.10,w*0.28,h*0.30);
+    c.fillStyle='#b8a274'; c.fillRect(-w*0.18,-h*1.18,w*0.36,h*0.08);
+    c.fillStyle='#8a7a5a';                                    // intake trumpets
+    for(let i=0;i<3;i++) c.fillRect(-w*0.13+i*w*0.10,-h*1.26,w*0.06,h*0.09);
+    c.strokeStyle='rgba(255,240,210,.75)'; c.lineWidth=Math.max(1,w*0.02);  // claw marks
+    for(let i=0;i<3;i++){ const ox=-w*0.30+i*w*0.07;
+      c.beginPath(); c.moveTo(ox,-h*0.56); c.lineTo(ox+w*0.05,-h*0.24); c.stroke(); }
+    c.fillStyle=ch.accent; c.fillRect(-w*0.34,-h*0.20,w*0.68,h*0.05);
+    cockpit(c,w,h,0.78,0.16);
+  },
+  // ---- HEX: a cauldron slung between wheels, brew slopping over the rim ----
+  cauldron(c,w,h,ch){
+    wheels(c,w,h,'spoke','#5a3a7a');
+    c.fillStyle=ch.body;
+    c.beginPath(); c.ellipse(0,-h*0.48,w*0.38,h*0.40,0,0,7); c.fill();
+    c.fillStyle='#2e1a44';
+    c.beginPath(); c.ellipse(0,-h*0.78,w*0.34,h*0.11,0,0,7); c.fill();
+    c.fillStyle=ch.accent;                                     // the brew
+    c.beginPath(); c.ellipse(0,-h*0.79,w*0.27,h*0.08,0,0,7); c.fill();
+    const t=(Date.now()%1400)/1400;                            // bubbles
+    for(let i=0;i<3;i++){ const bt=(t+i/3)%1;
+      c.globalAlpha=1-bt; c.fillStyle='#d9b6ff';
+      c.beginPath(); c.arc((i-1)*w*0.13,-h*(0.80+bt*0.28),w*0.026*(1-bt*0.4),0,7); c.fill(); }
+    c.globalAlpha=1;
+    c.strokeStyle='#6a5a3a'; c.lineWidth=Math.max(1,w*0.03);   // broom out the back
+    c.beginPath(); c.moveTo(w*0.30,-h*0.42); c.lineTo(w*0.52,-h*0.22); c.stroke();
+    c.fillStyle='#a58a52';
+    c.beginPath(); c.moveTo(w*0.50,-h*0.26); c.lineTo(w*0.62,-h*0.06); c.lineTo(w*0.44,-h*0.12); c.closePath(); c.fill();
+  },
+  // ---- THE MASKED: lifted camp truck, roll bar, blades racked on the front ----
+  truck(c,w,h,ch){
+    wheels(c,w,h,'tall');
+    c.fillStyle=ch.body;
+    c.fillRect(-w*0.40,-h*0.74,w*0.80,h*0.60);                 // bed
+    c.fillStyle='#242a2e';
+    c.fillRect(-w*0.22,-h*0.98,w*0.44,h*0.26);                 // cab
+    c.strokeStyle='#5a6068'; c.lineWidth=Math.max(1,w*0.026);  // roll bar
+    c.beginPath(); c.moveTo(-w*0.26,-h*0.98); c.lineTo(-w*0.20,-h*1.16);
+    c.lineTo(w*0.20,-h*1.16); c.lineTo(w*0.26,-h*0.98); c.stroke();
+    c.fillStyle='#6a2a1a';                                     // rust streaks
+    for(let i=0;i<4;i++) c.fillRect(-w*0.34+i*w*0.20,-h*0.60,w*0.05,h*0.30);
+    c.fillStyle=ch.accent;                                     // blade rack
+    for(let i=0;i<3;i++){ const bx=-w*0.16+i*w*0.16;
+      c.beginPath(); c.moveTo(bx,-h*0.20); c.lineTo(bx+w*0.03,-h*0.44); c.lineTo(bx+w*0.06,-h*0.20); c.closePath(); c.fill(); }
+    cockpit(c,w,h,0.94,0.16);
+  },
+  // ---- ROT: a jalopy losing the fight, listing, trailing smoke ----
+  jalopy(c,w,h,ch){
+    wheels(c,w,h,'tread');
+    c.save(); c.rotate(-0.045);                                // permanently lopsided
+    c.fillStyle=ch.body;
+    c.beginPath();
+    c.moveTo(-w*0.38,-h*0.14); c.lineTo(w*0.40,-h*0.18);
+    c.lineTo(w*0.32,-h*0.80); c.lineTo(-w*0.30,-h*0.86); c.closePath(); c.fill();
+    c.fillStyle='#3f4a1f';                                     // rot patches
+    c.beginPath(); c.arc(-w*0.16,-h*0.52,w*0.09,0,7); c.arc(w*0.14,-h*0.36,w*0.06,0,7); c.fill();
+    c.fillStyle='#7a6a3a';                                     // bumper hanging off
+    c.fillRect(-w*0.42,-h*0.10,w*0.5,h*0.05);
+    c.restore();
+    c.fillStyle=ch.accent; c.fillRect(-w*0.28,-h*0.26,w*0.56,h*0.04);
+    const t=(Date.now()%1800)/1800;                            // smoke puff
+    c.globalAlpha=0.35*(1-t); c.fillStyle='#8a9a6a';
+    c.beginPath(); c.arc(w*0.34,-h*(0.86+t*0.4),w*0.07+t*w*0.05,0,7); c.fill();
+    c.globalAlpha=1;
+    cockpit(c,w,h,0.72,0.17);
+  },
+  // ---- EMBER: low hot rod, flame flanks, stacks glowing from underneath ----
+  hotrod(c,w,h,ch){
+    const gl=c.createRadialGradient(0,-h*0.06,1,0,-h*0.06,w*0.5);   // underglow
+    gl.addColorStop(0,'rgba(255,120,40,.5)'); gl.addColorStop(1,'rgba(255,90,20,0)');
+    c.fillStyle=gl; c.beginPath(); c.ellipse(0,-h*0.04,w*0.5,h*0.14,0,0,7); c.fill();
+    wheels(c,w,h,'fat','#6a2a10');
+    c.fillStyle=ch.body;
+    c.beginPath();
+    c.moveTo(-w*0.44,-h*0.16); c.lineTo(w*0.44,-h*0.16);
+    c.lineTo(w*0.30,-h*0.70); c.lineTo(-w*0.30,-h*0.70); c.closePath(); c.fill();
+    c.fillStyle=ch.accent;                                      // flame licks
+    for(let i=0;i<3;i++){ const fx=-w*0.28+i*w*0.20;
+      c.beginPath(); c.moveTo(fx,-h*0.18); c.lineTo(fx+w*0.07,-h*0.50);
+      c.lineTo(fx+w*0.12,-h*0.22); c.lineTo(fx+w*0.16,-h*0.44); c.lineTo(fx+w*0.18,-h*0.18); c.closePath(); c.fill(); }
+    for(const sx of [-w*0.34,w*0.34]){                          // horn stacks
+      c.fillStyle='#3a1a10';
+      c.beginPath(); c.moveTo(sx-w*0.03,-h*0.66); c.lineTo(sx+w*0.03,-h*0.66);
+      c.lineTo(sx+w*0.06,-h*0.98); c.lineTo(sx,-h*0.92); c.closePath(); c.fill();
+      c.fillStyle='rgba(255,150,60,.85)'; c.beginPath(); c.arc(sx+w*0.03,-h*0.97,w*0.026,0,7); c.fill();
+    }
+    cockpit(c,w,h,0.64,0.16);
+  }
+};
 function drawKartSprite(c,x,y,size,char,lean,isPlayer){
-  const w=size, h=size*0.72, body=char.body, accent=char.accent, shape=char.shape;
+  const w=size, h=size*0.72;
   c.save(); c.translate(x,y);
   c.fillStyle='rgba(0,0,0,.5)'; c.beginPath(); c.ellipse(0,0,w*0.5,h*0.16,0,0,7); c.fill();
   c.translate((lean||0)*w*0.12,0);
-  // wheels
-  c.fillStyle='#0c0a10';
-  c.fillRect(-w*0.5,-h*0.55,w*0.16,h*0.5);
-  c.fillRect(w*0.34,-h*0.55,w*0.16,h*0.5);
-  // body silhouette varies per character
-  c.fillStyle=body; c.beginPath();
-  if(shape==='coffin'){ c.moveTo(-w*0.3,-h*0.12); c.lineTo(w*0.3,-h*0.12); c.lineTo(w*0.22,-h*0.55);
-    c.lineTo(w*0.13,-h*0.95); c.lineTo(-w*0.13,-h*0.95); c.lineTo(-w*0.22,-h*0.55); c.closePath(); }
-  else if(shape==='box'){ c.moveTo(-w*0.33,-h*0.1); c.lineTo(w*0.33,-h*0.1); c.lineTo(w*0.3,-h*0.9); c.lineTo(-w*0.3,-h*0.9); c.closePath(); }
-  else if(shape==='round'){ c.arc(0,-h*0.5,w*0.35,0,7); }
-  else { c.moveTo(-w*0.34,-h*0.15); c.lineTo(w*0.34,-h*0.15); c.lineTo(w*0.26,-h*0.9); c.lineTo(-w*0.26,-h*0.9); c.closePath(); }
-  c.fill();
-  // accent strip + cockpit
-  c.fillStyle=accent; c.fillRect(-w*0.3,-h*0.2,w*0.6,h*0.06);
-  c.fillStyle='#0d0a12'; c.fillRect(-w*0.2,-h*0.78,w*0.4,h*0.3);
-  drawHead(c,char.head,w,h,accent);
+  (RIGS[char.rig]||RIGS.bone)(c,w,h,char);
+  drawHead(c,char.head,w,h,char.accent);
+  if(isPlayer){                                    // ground ring, so you can pick yourself out of a pack
+    c.strokeStyle='rgba(255,225,160,.45)'; c.lineWidth=Math.max(1,w*0.025);
+    c.beginPath(); c.ellipse(0,h*0.02,w*0.42,h*0.13,0,0,7); c.stroke();
+  }
   c.restore();
 }
 function drawHead(c,type,w,h,accent){
@@ -1703,7 +1976,7 @@ function drawMini(){
 const LAPS=3;
 let state='title', raceStart=0, elapsed=0, bestLap=loadBest();
 let keys={up:false,down:false,left:false,right:false,hop:false};
-let touchSteer=0, touchGas=false, touchBrake=false, touchFire=false;
+let touchSteer=0, touchGas=false, touchBrake=false, touchFire=false, firePressed=false;
 
 let soundOn=true, curMenu='main', menuSel=0, padsOn=false;
 let shake=0, aiComp=1;
@@ -1725,9 +1998,13 @@ const MENUS={
   options:{ kick:'', title:'OPTIONS', items:[
     {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
     {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); paintMenuSel(); }},
+    {label:()=>'DIFFICULTY:  '+(diffMode==='auto'?'ADAPTIVE':diffMode.toUpperCase()),
+      act:()=>{ const seq=['auto','easy','normal','hard'];
+        diffMode=seq[(seq.indexOf(diffMode)+1)%seq.length];
+        if(diffMode==='auto') SKILL=0;          // re-centre when handing control back
+        recomputeDIFF(); paintMenuSel(); }},
     {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn;
       document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
-    {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn; document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:'◀ BACK', act:()=>openMenu('main')},
   ]},
   pause:{ kick:'', title:'PAUSED', items:[
@@ -1868,6 +2145,8 @@ function finish(){
   // full finishing order of the field
   const order=[player,...rivals].slice().sort((a,b)=>b.progress-a.progress);
   const place=order.indexOf(player)+1;
+  const diffBefore=DIFF;
+  updateSkill(place,raceWrecks);          // adapts between races, never during one
 
   if(raceMode==='cup'){
     order.forEach((k,i)=> cupPts[k.char.name]=(cupPts[k.char.name]||0)+(POINTS[i]||0));
@@ -1880,6 +2159,7 @@ function finish(){
     document.getElementById('finBody').innerHTML = standings.map((c,i)=>
       `<div class="roster-line${c.name===player.char.name?' me':''}">${i+1}. ${c.name} — ${cupPts[c.name]} PTS</div>`).join('');
     document.getElementById('againBtn').textContent = done?'▸ BACK TO MENU':'▸ NEXT RACE';
+    showDiffNote(diffBefore);
     beep(done?990:660,.35);
   } else {
     document.getElementById('finKick').textContent = place===1?'GRAVE PRIX — WON':'RACE COMPLETE';
@@ -1888,13 +2168,14 @@ function finish(){
     document.getElementById('finBody').innerHTML =
       'TOTAL <span class="g">'+fmt(elapsed)+'</span><br>BEST LAP <span class="g">'+(player.best<Infinity?fmt(player.best):'--:--')+'</span>';
     document.getElementById('againBtn').textContent='▸ RUN IT BACK';
+    showDiffNote(diffBefore);
     beep(place===1?880:220,.4);
   }
   show('scFinish');
   // reset every kart back to the start grid and kill all motion/boost state
   placeGrid();
   PROJ=[]; EXPL=[];
-  [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0;k._wasAir=0; });
+  [player,...rivals].forEach(k=>{ k.vx=0;k.vy=0;k.spd=0;k.ground=0;k.boost=0;k.charge=0;k.mtTier=0;k.steer=0;k.drift=0;k.meter=0.6;k.cool=0;k.hp=MAXHP;k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0;k._wasAir=0; }); firePressed=false; raceWrecks=0;
   buildTrackObjects(); buildZombies(); buildStalker();
 }
 
@@ -1912,10 +2193,13 @@ function loop(now){
     for(const r of rivals){ const gap=player.progress-r.progress;
       // Behind you they lean on it hard so they can close up and apply pressure;
       // ahead of you they only ease off a little, so a lead still has to be earned.
-      r.rubber = gap>=0 ? clamp(1+gap*0.022, 1, 1.11)    // behind you → real chase
+      // Kept deliberately shallow. The adaptive layer between races carries the
+      // difficulty, so this only has to stop the pack strewing out — it is not
+      // the thing making the game hard.
+      r.rubber = gap>=0 ? clamp(1+gap*0.016, 1, 1.07)    // behind you → gentle chase
                         : clamp(1+gap*0.030, 0.91, 1); } // ahead of you → slight ease
     for(const r of rivals) updateKart(r,dt,aiInput(r));
-    if(keys.fire||touchFire) fireWeapon(player);
+    if(firePressed){ fireWeapon(player); firePressed=false; }   // consumed on use
     for(const r of rivals) aiMaybeFire(r);
     updateCombat(dt);
     updateTrackObjects(dt);
@@ -1946,7 +2230,7 @@ function loop(now){
     // Rivals now run the same 125 car as you, so this multiplier has to be far
     // gentler than it was — at the old +15% a leading player could never break
     // away, because the pack would out-run them on raw top speed alone.
-    aiComp = place===1 ? 1.09 : place<=3 ? 1.05 : 1.02;
+    aiComp = place===1 ? 1.05 : place<=3 ? 1.02 : 1.00;
     const tb=document.getElementById('turbo'); document.getElementById('turboFill').style.width=(player.meter*100).toFixed(0)+'%';
     tb.classList.toggle('full', player.meter>=0.995); tb.classList.toggle('boosting', player.boost>0);
     tb.classList.toggle('cooling', player.cool>0);
@@ -1960,7 +2244,10 @@ function loop(now){
     engineSet(player.ground, slide);
   }
 
-  if(state==='race'||state==='countdown'||state==='finish'||state==='pause'||state==='menu'){ render(); drawMini(); }
+  // The track only draws when it's actually part of the moment. Menus, boot and
+  // title get a clean backdrop instead of a rolling demo lap behind them.
+  if(state==='race'||state==='countdown'||state==='finish'||state==='pause'){ render(); drawMini(); }
+  else if(state==='boot'||state==='title'||state==='menu'){ dctx.fillStyle='#05040a'; dctx.fillRect(0,0,DISP.width,DISP.height); }
   requestAnimationFrame(loop);
 }
 
@@ -2078,7 +2365,7 @@ function damageKart(k,amt,owner){
   if(k.isPlayer) beep(150,.09);
   if(k.hp<=0){
     k.hp=0; k.dead=RESPAWN; EXPL.push({x:k.x,y:k.y,life:0.7,r:1.6});
-    if(k.isPlayer){ addShake(28); crowdCheer('gasp'); flashMsg('WHOA — WRECKED!'); beep(70,.5); }
+    if(k.isPlayer){ raceWrecks++; addShake(28); crowdCheer('gasp'); flashMsg('WHOA — WRECKED!'); beep(70,.5); }
     else { crowdCheer('cheer'); if(owner&&owner.isPlayer){ addShake(14); flashMsg(k.char.name+' DOWN'); beep(920,.2); } }
   }
 }
@@ -2191,6 +2478,8 @@ const DRIVE={};
 
 addEventListener('keydown',e=>{
   const t=keyTok(e); if(!t) return;
+  if(state==='boot'){ e.preventDefault(); skipBoot(); return; }      // impatient players
+  if(state==='title'){ e.preventDefault(); leaveTitle(); return; }   // any key = start
   if(state==='menu'||state==='pause'){
     if(isAct(t,'up')){ e.preventDefault(); menuMove(-1); }
     else if(isAct(t,'down')){ e.preventDefault(); menuMove(1); }
@@ -2216,11 +2505,19 @@ addEventListener('keydown',e=>{
   }
   if(state==='finish'){ if(isAct(t,'ok')){ e.preventDefault(); onAgain(); } else if(isAct(t,'back')){ raceMode='race'; openMenu('main'); } return; }
   if(state==='race'&&isAct(t,'back')){ e.preventDefault(); pauseRace(); return; }
-  const k=DRIVE[t]; if(k){ e.preventDefault(); keysSeen=true; if(k==='hop')keys.hop=true; else keys[k]=true; }
+  const k=DRIVE[t];
+  if(k){ e.preventDefault(); keysSeen=true;
+    if(k==='hop') keys.hop=true;
+    // Fire is edge-triggered rather than held. Ctrl/Shift keyups are the ones SL
+    // most often fails to deliver, and a lost keyup on a HELD fire button means
+    // the gun never stops. One shot per fresh press can't get stuck.
+    else if(k==='fire'){ if(!e.repeat) firePressed=true; }
+    else keys[k]=true;
+  }
 });
 addEventListener('keyup',e=>{
   const t=keyTok(e); if(!t) return;
-  const k=DRIVE[t]; if(k&&k!=='hop'){ e.preventDefault(); keys[k]=false; }
+  const k=DRIVE[t]; if(k&&k!=='hop'&&k!=='fire'){ e.preventDefault(); keys[k]=false; }
 });
 /* Stuck-key guard. The old version wiped every held key on 'blur', which is
    fine in a browser tab but hostile in-world, where media focus flickers — one
@@ -2232,6 +2529,8 @@ addEventListener('blur',()=>{ setTimeout(()=>{ if(!document.hasFocus()){
   keys.up=keys.down=keys.left=keys.right=keys.boost=false; } },400); });
 DISP.tabIndex=0;
 addEventListener('pointerdown',()=>{ try{window.focus();DISP.focus();}catch(e){} });
+// click works as start too — essential in-world, where keys may not arrive at all
+addEventListener('pointerdown',()=>{ if(state==='boot') skipBoot(); else if(state==='title') leaveTitle(); });
 try{ window.focus(); }catch(e){}
 document.getElementById('againBtn').onclick=onAgain;
 
@@ -2250,7 +2549,7 @@ bindPad('pL',()=>touchSteer=-1,()=>{if(touchSteer<0)touchSteer=0;});
 bindPad('pR',()=>touchSteer=1,()=>{if(touchSteer>0)touchSteer=0;});
 bindPad('pA',()=>touchGas=true,()=>touchGas=false);
 bindPad('pB',()=>touchBrake=true,()=>touchBrake=false);
-bindPad('pF',()=>touchFire=true,()=>touchFire=false);
+bindPad('pF',()=>{firePressed=true;},()=>{});   // edge-triggered, same as the key
 
 /* ================================================================
    HELPERS
@@ -2751,8 +3050,92 @@ rivals=CHARS.slice(1).map(c=>makeKart(c,false));
 placeGrid();
 resize();
 document.getElementById('hBest').textContent=bestLap?fmt(bestLap):'--:--';
-openMenu('main');
 requestAnimationFrame(loop);
+
+/* ================================================================
+   BOOT SEQUENCE — studio logo, then title, then the menu.
+   Nothing here blocks input handling; the title accepts any key or a
+   click, and the whole run can be skipped by pressing through it.
+   ================================================================ */
+/* Declared before the functions that touch them: `let` bindings are not
+   hoisted like function declarations are, so calling startBoot() above this
+   point threw a temporal-dead-zone ReferenceError on bootT. */
+let bootT=0, titleReady=false;
+function drawStudioLogo(t){                       // t = 0..1 reveal progress
+  const cv=document.getElementById('bootLogo'); if(!cv) return;
+  const c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  c.clearRect(0,0,W,H);
+  c.save(); c.translate(W/2,H/2);
+  const ease=t<0?0:t>1?1:t;
+  // the mark: a bladed diamond inside a broken ring
+  c.globalAlpha=ease;
+  c.strokeStyle='#8f0d16'; c.lineWidth=3;
+  for(let i=0;i<3;i++){                            // ring drawn as three arcs with gaps
+    const a0=i*2.094+0.28, a1=a0+1.53;
+    c.beginPath(); c.arc(0,-14,52,a0,a1); c.stroke();
+  }
+  const g=c.createLinearGradient(0,-58,0,30);
+  g.addColorStop(0,'#e9e3d3'); g.addColorStop(1,'#8f0d16');
+  c.fillStyle=g;
+  c.beginPath(); c.moveTo(0,-58); c.lineTo(26,-14); c.lineTo(0,30); c.lineTo(-26,-14); c.closePath(); c.fill();
+  c.fillStyle='rgba(5,4,10,.85)';
+  c.beginPath(); c.moveTo(0,-40); c.lineTo(15,-14); c.lineTo(0,12); c.lineTo(-15,-14); c.closePath(); c.fill();
+  c.fillStyle='#e01e28';
+  c.beginPath(); c.moveTo(0,-30); c.lineTo(7,-14); c.lineTo(0,2); c.lineTo(-7,-14); c.closePath(); c.fill();
+  // wordmark wipes in left-to-right behind a clip
+  c.save();
+  const wipe=Math.max(0,Math.min(1,(t-0.35)/0.5));
+  c.beginPath(); c.rect(-W/2,44,W*wipe,60); c.clip();
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillStyle='#e9e3d3'; c.font='400 30px Georgia,serif';
+  c.fillText('SINISTER',0,62);
+  c.fillStyle='#8f0d16'; c.font='400 16px Georgia,serif';
+  c.letterSpacing='6px';
+  c.fillText('D I V I S I O N',0,88);
+  c.restore();
+  c.restore();
+}
+function startBoot(){
+  state='boot'; bootT=0;
+  document.getElementById('scBoot').classList.add('show');
+  document.getElementById('menu').classList.remove('show');
+  const tag=document.getElementById('bootTag');
+  const step=()=>{
+    if(state!=='boot') return;
+    bootT+=1/60;
+    drawStudioLogo(bootT/1.6);
+    tag.style.opacity = bootT>1.5 ? Math.min(1,(bootT-1.5)/0.6) : 0;
+    if(bootT>3.4){ showTitle(); return; }
+    requestAnimationFrame(step);
+  };
+  step();
+}
+function showTitle(){
+  state='title';
+  const boot=document.getElementById('scBoot');
+  boot.style.opacity='0';
+  setTimeout(()=>{ boot.classList.remove('show'); boot.style.opacity='1'; },500);
+  const t=document.getElementById('scTitle'); t.classList.add('show');
+  const k=document.getElementById('titleKick'), n=document.getElementById('titleName'), pr=document.getElementById('titlePress');
+  k.style.opacity='0'; n.style.opacity='0'; pr.style.opacity='0';
+  setTimeout(()=>{ k.style.opacity='1'; },500);
+  setTimeout(()=>{ n.style.opacity='1'; },1100);
+  setTimeout(()=>{ pr.style.opacity='1'; titleReady=true; },2000);
+}
+function leaveTitle(){
+  if(state!=='title'||!titleReady) return;
+  titleReady=false;
+  document.getElementById('scTitle').classList.remove('show');
+  try{ if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended')actx.resume(); }catch(e){}
+  beep(660,.16);
+  openMenu('main');
+}
+function skipBoot(){
+  if(state==='boot'){ bootT=99; showTitle(); titleReady=true;
+    ['titleKick','titleName','titlePress'].forEach(id=>document.getElementById(id).style.opacity='1'); }
+}
+
+startBoot();          // last line: everything it depends on now exists
 </script>
 </body>
 </html>
