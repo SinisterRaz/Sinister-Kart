@@ -2644,8 +2644,10 @@ function paintMenuSel(){ const items=MENUS[curMenu].items;
     el.className='menu-item'+(i===menuSel?' on':'');
     el.textContent=(i===menuSel?'▸ ':'  ')+(typeof items[i].label==='function'?items[i].label():items[i].label);
   }); }
-function menuMove(d){ const n=MENUS[curMenu].items.length; menuSel=(menuSel+d+n)%n; paintMenuSel(); beep(560,.05); }
-function menuActivate(){ beep(760,.08); MENUS[curMenu].items[menuSel].act(); }
+function menuMove(d){ const n=MENUS[curMenu].items.length; if(!n) return;   // guard: %0 is NaN
+  menuSel=(menuSel+d+n)%n; paintMenuSel(); beep(560,.05); }
+function menuActivate(){ const it=MENUS[curMenu].items[menuSel]; if(!it||!it.act) return;
+  beep(760,.08); it.act(); }
 function pauseRace(){ engineStop(); musicStop(); openMenu('pause'); }
 function resumeRace(){ closeMenu(); state='race'; last=performance.now(); engineStart(); musicStart(); }
 function quitToMenu(){ closeMenu(); engineStop(); musicStop();
@@ -4006,7 +4008,7 @@ function mpBeginRace(){
   closeMenu();
   raceMode='race';
   const mine=MP.players[MP.me];
-  if(mine) selChar=mine.char|0;
+  if(mine) selIdx=mine.char|0;
   startRace();
 }
 
@@ -4185,8 +4187,16 @@ function openMPBrowser(){
     MENUS.mpbrowse.items=[{label:'◀ BACK', act:()=>openMenu('main')}];
     renderMenu(); return;
   }
+  /* Render a WORKING menu first. mpRefreshBrowser is async, and rendering an
+     empty item list before it returned left the menu unusable — menuMove does
+     `menuSel % items.length`, which is NaN on an empty array, so nothing could
+     be selected and CREATE LOBBY never appeared. */
   MENUS.mpbrowse.body='Searching for lobbies…';
-  MENUS.mpbrowse.items=[{label:'◀ BACK', act:()=>openMenu('main')}];
+  MENUS.mpbrowse.items=[
+    {label:'▸ CREATE LOBBY', act:async()=>{ await mpCreate(mpName, selIdx||0); openMPRoom(); }},
+    {label:'⟳ REFRESH', act:()=>mpRefreshBrowser()},
+    {label:'◀ BACK', act:()=>openMenu('main')}
+  ];
   renderMenu();
   mpRefreshBrowser();
 }
@@ -4200,15 +4210,16 @@ async function mpRefreshBrowser(){
     : '<span style="opacity:.6">No lobbies open. Create one and others can join.</span>'+
       (MP.err?'<br><span style="color:#e05a5a">'+MP.err+'</span>':'');
   const items=[{label:'▸ CREATE LOBBY', act:async()=>{
-      await mpCreate(mpName, selChar||0); openMPRoom(); }}];
+      await mpCreate(mpName, selIdx||0); openMPRoom(); }}];
   list.slice(0,6).forEach(r=>{
     items.push({label:'JOIN  '+r.code+'   '+r.players+'/8   '+
       (TRACKS[r.track]?TRACKS[r.track].name:'?')+(r.racing?'   (racing)':''),
-      act:async()=>{ if(await mpJoin(r.code,mpName,selChar||0)) openMPRoom(); else { openMPBrowser(); } }});
+      act:async()=>{ if(await mpJoin(r.code,mpName,selIdx||0)) openMPRoom(); else { openMPBrowser(); } }});
   });
   items.push({label:'⟳ REFRESH', act:()=>mpRefreshBrowser()});
   items.push({label:'◀ BACK', act:()=>openMenu('main')});
   MENUS.mpbrowse.items=items;
+  if(menuSel>=items.length) menuSel=0;      // list shrank under the cursor
   if(curMenu==='mpbrowse') renderMenu();
 }
 
@@ -4240,8 +4251,8 @@ function mpPaintRoom(){
     '<br><span style="opacity:.6">Track: <b>'+(TRACKS[selTrack]?TRACKS[selTrack].name:'?')+'</b>'+
     (MP.isHost?' — you pick':' — host picks')+'</span>';
   const items=[];
-  items.push({label:()=>'MY RACER:  '+(CHARS[selChar]?CHARS[selChar].name:'?'),
-    act:()=>{ selChar=(selChar+1)%CHARS.length; mpSetChar(selChar); mpPaintRoom(); }});
+  items.push({label:()=>'MY RACER:  '+(CHARS[selIdx]?CHARS[selIdx].name:'?'),
+    act:()=>{ selIdx=(selIdx+1)%CHARS.length; mpSetChar(selIdx); mpPaintRoom(); }});
   if(MP.isHost){
     items.push({label:()=>'TRACK:  '+(TRACKS[selTrack]?TRACKS[selTrack].name:'?'),
       act:()=>{ const n=(selTrack+1)%TRACKS.length;
