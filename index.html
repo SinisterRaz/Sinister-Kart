@@ -277,7 +277,7 @@ const ROADW_DEF = 66, SHOULDER_DEF = 16;
    H5/H7 up so the base shape itself doubles back.
    ================================================================ */
 const TRACKS=[
- { name:'THE DEADLY 500', sub:'SPEEDWAY OF THE DAMNED', harm:[1653,10,5.36,241,4.59,241,4.61,149,0.34], speedway:true, twist:[{from:0.098,to:0.288,freq:3,amp:41}],
+ { name:'THE DEADLY 500', sub:'SPEEDWAY OF THE DAMNED', harm:[1653,10,5.36,241,4.59,241,4.61,149,0.34], speedway:true, announcer:true, twist:[{from:0.098,to:0.288,freq:3,amp:41}],
    col:{void:'#0b0710',wall:'#46434f',face:'#7a1418',road:'#4a4450',shade:'#3c3742',rumA:'#8f0d16',rumB:'#d8ccae',dash:'rgba(200,168,74,.4)',fog:[26,10,24],skyA:'#12060c',skyB:'#2a0a10',moon:'#e0c0c0',glow:'224,30,40'},
    decor:['bleacher','floodlight'], amb:[55,110] },
  { name:"FRANKENSTEIN'S CASTLE", sub:'IT'+'\u2019'+'S ALIVE!', harm:[1576,183,2.73,231,1.21,186,2.69,237,3.19], twist:[{from:0.099,to:0.323,freq:3,amp:33},{from:0.421,to:0.581,freq:3,amp:40}],
@@ -595,6 +595,7 @@ let CKPTS=[];
 /* ---- decor: billboarded roadside objects (trees, graves, crosses, braziers) ---- */
 let DECOR=[];
 let SPEEDWALL=[], SPEEDWALL_IN=[], SPEEDSTAND=[], TOWER=null;   // continuous speedway architecture
+let PA=[];                                                       // public-address speaker towers
 /* per-zone prop palettes — weighted so the woods read as forest, not a prop sampler */
 const ZONE_PROPS={
   woods:['pine','pinetall','pinetall','pine','pinesquat','deadtree','deadtree','twisted','birch','stump'],
@@ -902,6 +903,19 @@ function buildSpeedwayDecor(N){
   const a=CENTER[0], b=CENTER[1], dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
   const ox=a.x-wc, oy=a.y-wc, side=(nx*ox+ny*oy)>=0?1:-1;
   TOWER={x:a.x+nx*side*(WALLR+40), y:a.y+ny*side*(WALLR+40)};
+  /* PA towers spaced around the circuit. The announcer is heard FROM these,
+     so how loud he is depends on where you are — the sound sweeps past as you
+     go by, which is what a real speedway actually sounds like. */
+  PA=[];
+  if(TH.announcer){
+    const N=CENTER.length;
+    for(let t=0;t<6;t++){
+      const i=Math.floor(t/6*N), f=frameAt(i,N);
+      const sx=f.a.x+f.nx*side*(WALLR+96), sy=f.a.y+f.ny*side*(WALLR+96);
+      PA.push({x:sx,y:sy});
+      DECOR.push({x:sx,y:sy,type:'patower',s:3.1});
+    }
+  }
 }
 // project a world point to screen using the current camera basis (set each render)
 let _cam=null;
@@ -1258,6 +1272,23 @@ function drawDecor(c,x,y,size,type){
       const g=c.createRadialGradient(cx,-s*1.09,0,cx,-s*1.09,s*0.10);
       g.addColorStop(0,'rgba(255,205,130,.9)'); g.addColorStop(1,'rgba(255,170,70,0)');
       c.fillStyle=g; c.beginPath(); c.arc(cx,-s*1.09,s*0.10,0,7); c.fill(); }
+  } else if(type==='patower'){                     // PA speaker tower
+    c.strokeStyle='#2a3038'; c.lineWidth=Math.max(1,s*0.05);      // lattice mast
+    c.beginPath(); c.moveTo(-s*0.11,0); c.lineTo(-s*0.05,-s*0.92);
+    c.moveTo(s*0.11,0); c.lineTo(s*0.05,-s*0.92); c.stroke();
+    c.lineWidth=Math.max(1,s*0.022);
+    for(let i=0;i<5;i++){ const y=-s*0.13-i*s*0.17, w=s*0.10-i*s*0.012;
+      c.beginPath(); c.moveTo(-w,y); c.lineTo(w,y-s*0.09); c.moveTo(w,y); c.lineTo(-w,y-s*0.09); c.stroke(); }
+    // paired horns, angled apart
+    for(const sd of [-1,1]){
+      c.save(); c.translate(sd*s*0.13,-s*1.00); c.rotate(sd*0.42);
+      c.fillStyle='#3a424c'; c.beginPath();
+      c.moveTo(0,0); c.lineTo(sd*s*0.30,-s*0.15); c.lineTo(sd*s*0.30,s*0.15); c.closePath(); c.fill();
+      c.fillStyle='#171d24'; c.beginPath();
+      c.ellipse(sd*s*0.29,0,s*0.045,s*0.15,0,0,7); c.fill();
+      c.restore();
+    }
+    c.fillStyle='#8d5a1a'; c.fillRect(-s*0.06,-s*0.99,s*0.12,s*0.05);   // rusted bracket
   } else if(type==='townhouse'){                   // tall, narrow, leaning over the street
     c.save(); c.rotate(0.03);
     c.fillStyle='#151b26'; c.fillRect(-s*0.28,-s*1.10,s*0.56,s*1.10);
@@ -2664,6 +2695,8 @@ const MENUS={
         diffMode=seq[(seq.indexOf(diffMode)+1)%seq.length];
         if(diffMode==='auto') SKILL=0;          // re-centre when handing control back
         recomputeDIFF(); paintMenuSel(); }},
+    {label:()=>'ANNOUNCER:  '+(announcerOn?'ON':'OFF'),
+      act:()=>{ announcerOn=!announcerOn; paintMenuSel(); }},
     {label:()=>'ON-SCREEN PADS:  '+(padsOn?'ON':'OFF'), act:()=>{ padsOn=!padsOn;
       document.getElementById('touch').classList.toggle('on',padsOn); paintMenuSel(); }},
     {label:'◀ BACK', act:()=>openMenu('main')},
@@ -2797,6 +2830,7 @@ function countdown(n){
       setTimeout(()=>{el.classList.remove('show');},700);
       state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart();
       musicStop(); musicStart();          // swap the menu theme for the circuit score
+      annSay('start',null,true);
       rivals.forEach(r=>r.lapStart=raceStart);
       return;
     }
@@ -2808,7 +2842,8 @@ function countdown(n){
 }
 function onPlayerLap(){
   // called right after player.lap was incremented by a finish-line crossing
-  if(player.lap>=LAPS){ finish(); return; }   // completed all laps → done
+  if(player.lap>=LAPS){ annSay('win',null,true); finish(); return; }
+  if(player.lap===LAPS-1) annSay('lastLap',null,true);
   const onLap=player.lap+1;                    // the lap now beginning
   const el=document.getElementById('lapflash');
   el.textContent = (onLap===LAPS)?'FINAL LAP':'LAP '+onLap+'/'+LAPS;
@@ -3081,8 +3116,18 @@ function damageKart(k,amt,owner){
   if(k.isPlayer) beep(150,.09);
   if(k.hp<=0){
     k.hp=0; k.dead=RESPAWN; EXPL.push({x:k.x,y:k.y,life:0.7,r:1.6});
-    if(k.isPlayer){ raceWrecks++; addShake(28); crowdCheer('gasp'); flashMsg('WHOA — WRECKED!'); beep(70,.5); }
-    else { crowdCheer('cheer'); if(owner&&owner.isPlayer){ addShake(14); flashMsg(k.char.name+' DOWN'); beep(920,.2); } }
+    if(k.isPlayer){ raceWrecks++; addShake(28); crowdCheer('gasp'); flashMsg('WHOA — WRECKED!'); beep(70,.5);
+      randomCry(1.0);
+      annSay('player',null,true);
+      if(Math.random()<0.45) setTimeout(()=>playCackle(0.5), 520);   // someone enjoys it
+    }
+    else { crowdCheer('cheer');
+      // rivals cry out too, quieter — they are further away
+      randomCry(0.45);
+      annSay('wreck', k.char&&k.char.name, false);
+      if(owner&&owner.isPlayer){ addShake(14); flashMsg(k.char.name+' DOWN'); beep(920,.2);
+        setTimeout(()=>playCackle(0.55), 420);          // your kill, your laugh
+      } }
   }
 }
 function updateCombat(dt){
@@ -3325,6 +3370,399 @@ function engineStart(){ try{ if(!actx)actx=new(window.AudioContext||window.webki
   const bp=bands[0].bp;                                // kept for the reaction sweeps
   cg.connect(actx.destination); noise.start();
   eng={o,o2,g,f,a1,a2,ag,noise,cg,bp,bands,woods}; }catch(e){} }
+/* ================================================================
+   DEATH CRIES
+   A voice is a buzzing source shaped by two formant peaks. Move those
+   peaks around and the same synth reads as a different throat, which
+   is how five distinct characters come out of one function.
+   Pitch envelope carries the emotion — falling for a wail, rising for
+   a shriek, a stepped wobble for a laugh.
+   ================================================================ */
+const CRIES=[
+  // f1/f2 = vowel colour, base = pitch, kind = pitch contour
+  {base:330, f1:720, f2:1240, kind:'wail',   dur:1.15, rasp:0.30},  // long falling cry
+  {base:520, f1:640, f2:1800, kind:'shriek', dur:0.70, rasp:0.18},  // sharp and high
+  {base:190, f1:520, f2: 960, kind:'groan',  dur:1.30, rasp:0.55},  // low and guttural
+  {base:400, f1:820, f2:1500, kind:'yelp',   dur:0.45, rasp:0.22},  // short, cut off
+  {base:260, f1:600, f2:1100, kind:'gurgle', dur:1.00, rasp:0.70}   // wet and broken
+];
+function playCry(i,vol){
+  if(!soundOn) return;
+  try{
+    if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const C=CRIES[i%CRIES.length], t=actx.currentTime, D=C.dur, V=(vol||1);
+    const out=actx.createGain(); out.gain.value=1; out.connect(actx.destination);
+
+    // two formant filters in parallel — this is what makes it a voice
+    const mk=(hz,g)=>{ const f=actx.createBiquadFilter();
+      f.type='bandpass'; f.frequency.value=hz; f.Q.value=6;
+      const gg=actx.createGain(); gg.gain.value=g;
+      f.connect(gg); gg.connect(out); return f; };
+    const F1=mk(C.f1,1.0), F2=mk(C.f2,0.55);
+
+    const env=actx.createGain();
+    env.gain.setValueAtTime(0.0001,t);
+    env.gain.linearRampToValueAtTime(0.16*V, t+ (C.kind==='yelp'?0.02:0.06));
+    env.gain.setValueAtTime(0.16*V, t+D*0.45);
+    env.gain.exponentialRampToValueAtTime(0.0001, t+D);
+    env.connect(F1); env.connect(F2);
+
+    const o=actx.createOscillator(); o.type='sawtooth';
+    o.frequency.setValueAtTime(C.base,t);
+    if(C.kind==='wail'){
+      o.frequency.linearRampToValueAtTime(C.base*1.18,t+0.12);
+      o.frequency.exponentialRampToValueAtTime(C.base*0.45,t+D);
+    } else if(C.kind==='shriek'){
+      o.frequency.exponentialRampToValueAtTime(C.base*1.9,t+0.18);
+      o.frequency.exponentialRampToValueAtTime(C.base*0.7,t+D);
+    } else if(C.kind==='groan'){
+      o.frequency.exponentialRampToValueAtTime(C.base*0.55,t+D);
+    } else if(C.kind==='yelp'){
+      o.frequency.exponentialRampToValueAtTime(C.base*1.4,t+0.08);
+      o.frequency.exponentialRampToValueAtTime(C.base*0.6,t+D);
+    } else {  // gurgle — pitch stumbles downward
+      for(let n=0;n<5;n++)
+        o.frequency.setValueAtTime(C.base*(1-n*0.13)*(n%2?0.88:1.06), t+D*(n/5));
+    }
+    o.connect(env); o.start(t); o.stop(t+D+0.05);
+
+    // vibrato: a voice never holds a dead-flat pitch
+    const lfo=actx.createOscillator(), ld=actx.createGain();
+    lfo.frequency.value=5+Math.random()*3; ld.gain.value=C.base*0.05;
+    lfo.connect(ld); ld.connect(o.frequency); lfo.start(t); lfo.stop(t+D+0.05);
+
+    // rasp: breath noise through the same formants
+    const nb=actx.createBufferSource(); nb.buffer=musNoise(); nb.loop=true;
+    const ng=actx.createGain();
+    ng.gain.setValueAtTime(0.0001,t);
+    ng.gain.linearRampToValueAtTime(0.05*C.rasp*V,t+0.05);
+    ng.gain.exponentialRampToValueAtTime(0.0001,t+D);
+    nb.connect(ng); ng.connect(F1); ng.connect(F2);
+    nb.start(t); nb.stop(t+D+0.05);
+
+    setTimeout(()=>{ try{out.disconnect();}catch(e){} }, (D+0.4)*1000);
+  }catch(e){}
+}
+/* The cackle: a laugh is a stepped pitch contour on the same voice. */
+function playCackle(vol){
+  if(!soundOn) return;
+  try{
+    if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const t0=actx.currentTime, V=(vol||1);
+    const base=170+Math.random()*90;
+    const n=4+((Math.random()*3)|0);          // MU-HU-HA-HA-HA
+    const out=actx.createGain(); out.gain.value=1; out.connect(actx.destination);
+    const mkF=(hz,g)=>{ const f=actx.createBiquadFilter();
+      f.type='bandpass'; f.frequency.value=hz; f.Q.value=5;
+      const gg=actx.createGain(); gg.gain.value=g; f.connect(gg); gg.connect(out); return f; };
+    const F1=mkF(700,1.0), F2=mkF(1150,0.5);
+    for(let i=0;i<n;i++){
+      const t=t0+i*0.17, d=0.15;
+      const o=actx.createOscillator(); o.type='sawtooth';
+      const p=base*(1 - i*0.05);              // each syllable drops a little
+      o.frequency.setValueAtTime(p*1.25,t);
+      o.frequency.exponentialRampToValueAtTime(p*0.85,t+d);
+      const g=actx.createGain();
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.linearRampToValueAtTime((i===0?0.15:0.11)*V,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+      o.connect(g); g.connect(F1); g.connect(F2);
+      o.start(t); o.stop(t+d+0.03);
+    }
+    setTimeout(()=>{ try{out.disconnect();}catch(e){} }, (n*0.17+0.5)*1000);
+  }catch(e){}
+}
+/* Pick a cry that isn't the one we just used, so it never doubles up. */
+let _lastCry=-1;
+function randomCry(vol){
+  let i; do { i=(Math.random()*CRIES.length)|0; } while(CRIES.length>1 && i===_lastCry);
+  _lastCry=i; playCry(i,vol);
+}
+/* ================================================================
+   ANNOUNCER — The Deadly 500 only
+   Uses the browser's speech synthesiser. That is a real trade-off:
+   it needs no audio files (so the game stays one file) but the voice
+   is whatever the machine has, and some browsers have none at all —
+   Second Life's CEF may well be one of them. So it is feature-detected
+   and silently does nothing when unavailable, and there is a toggle.
+   Lines are queued with a cooldown so it comments rather than babbles.
+   ================================================================ */
+let announcerOn = true;
+let _annT = 0;
+/* No speechSynthesis dependency at all now — the announcer is built from
+   oscillators, so it sounds identical on every platform including SL's CEF. */
+/* How close is the nearest speaker tower, 0..1. Drives volume and the amount
+   of slap-back — far away you get more echo and less clarity, like a PA
+   heard across an infield. */
+function paProximity(){
+  if(!PA.length||!player) return 1;
+  let best=1e9;
+  for(const p of PA) best=Math.min(best,Math.hypot(player.x-p.x,player.y-p.y));
+  const NEAR=260, FAR=1500;
+  if(best<=NEAR) return 1;
+  if(best>=FAR) return 0;
+  return 1-(best-NEAR)/(FAR-NEAR);
+}
+/* The tannoy chain: bandpass to strip the top and bottom off the voice, a
+   waveshaper to crush and distort it, then two taps of slap-back delay.
+   Everything the speech synth produces is routed through this, so the voice
+   comes out of the horns rather than out of nowhere. */
+function paChain(prox){
+  const dry=actx.createGain();
+  const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=520;
+  const lp=actx.createBiquadFilter(); lp.type='lowpass';  lp.frequency.value=2600;
+  const peak=actx.createBiquadFilter(); peak.type='peaking';
+  peak.frequency.value=1500; peak.Q.value=1.2; peak.gain.value=9;   // horn honk
+  // hard-clip curve: the crunch of an overdriven speaker
+  const sh=actx.createWaveShaper();
+  const n=1024, curve=new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=i/(n-1)*2-1; curve[i]=Math.tanh(x*4.2)*0.85; }
+  sh.curve=curve; sh.oversample='2x';
+  const out=actx.createGain();
+  out.gain.value=(0.16+0.5*prox)*0.56;     // 44% below original (−30% then −20%) — sits under the engines
+  dry.connect(hp); hp.connect(lp); lp.connect(peak); peak.connect(sh); sh.connect(out);
+  // slap-back: more of it the further away you are
+  const d1=actx.createDelay(1.0), g1=actx.createGain();
+  d1.delayTime.value=0.13; g1.gain.value=0.34*(1.25-prox*0.6);
+  const d2=actx.createDelay(1.0), g2=actx.createGain();
+  d2.delayTime.value=0.28; g2.gain.value=0.18*(1.25-prox*0.6);
+  sh.connect(d1); d1.connect(g1); g1.connect(out);
+  sh.connect(d2); d2.connect(g2); g2.connect(out);
+  out.connect(actx.destination);
+  return {input:dry, out};
+}
+/* The click and hum of a tannoy keying up, so the voice never starts bare. */
+function paKeyUp(prox){
+  try{
+    const t=actx.currentTime, v=(0.10+0.16*prox)*0.56;  // key-up click, matched (−30% then −20%)
+    const c=actx.createBufferSource(), hp=actx.createBiquadFilter(), cg=actx.createGain();
+    c.buffer=musNoise(); hp.type='highpass'; hp.frequency.value=900;
+    cg.gain.setValueAtTime(v*0.7,t); cg.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+    c.connect(hp); hp.connect(cg); cg.connect(actx.destination); c.start(t); c.stop(t+0.06);
+    const o=actx.createOscillator(), og=actx.createGain();
+    o.type='sine'; o.frequency.value=110;
+    og.gain.setValueAtTime(0.0001,t); og.gain.linearRampToValueAtTime(v*0.35,t+0.03);
+    og.gain.exponentialRampToValueAtTime(0.0001,t+0.35);
+    o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.36);
+  }catch(e){}
+}
+/* ---- the tannoy voice itself : a formant speech synth ----------------------
+   The announcer says the ACTUAL words. It's a small formant synthesiser: each
+   phoneme sets up to three formant peaks (F1/F2/F3) driven by a voiced buzz,
+   or filtered noise for fricatives, or a burst for stops. It's the crunchy
+   vintage-arcade "talkie" voice (Sinistar / Gauntlet lineage) — fits a horror
+   speedway, routes through the horn chain so it crunches and echoes, and needs
+   no speech engine, so it sounds identical in SL's CEF as anywhere. */
+
+// f:[F1,F2,F3] Hz.  g: glide target for diphthongs.  s: source class —
+// 'v' voiced vowel/approx · 'n' nasal · 'F' unvoiced fric · 'f' voiced fric
+// · 'S' unvoiced stop · 's' voiced stop.  d: nominal duration (s).
+const PH = {
+  AA:{f:[700,1150,2600],s:'v',d:0.15}, AE:{f:[660,1720,2410],s:'v',d:0.15},
+  AH:{f:[620,1200,2400],s:'v',d:0.09}, AO:{f:[570,840,2500],s:'v',d:0.15},
+  EH:{f:[530,1840,2480],s:'v',d:0.12}, ER:{f:[490,1350,1690],s:'v',d:0.13},
+  IH:{f:[420,1900,2550],s:'v',d:0.10}, IY:{f:[290,2250,2900],s:'v',d:0.13},
+  OW:{f:[490,900,2400],g:[380,780,2300],s:'v',d:0.16},
+  UH:{f:[450,1030,2240],s:'v',d:0.10}, UW:{f:[320,830,2200],s:'v',d:0.14},
+  AY:{f:[700,1150,2500],g:[400,1950,2600],s:'v',d:0.19},
+  EY:{f:[500,1780,2500],g:[330,2200,2900],s:'v',d:0.17},
+  AW:{f:[690,1150,2500],g:[380,850,2300],s:'v',d:0.19},
+  L:{f:[360,1300,2600],s:'v',d:0.07}, R:{f:[420,1180,1600],s:'v',d:0.07},
+  W:{f:[300,760,2200],s:'v',d:0.06},  Y:{f:[280,2200,2900],s:'v',d:0.06},
+  M:{f:[260,1100,2200],s:'n',d:0.08}, N:{f:[290,1600,2600],s:'n',d:0.08},
+  NG:{f:[290,2000,2800],s:'n',d:0.08},
+  S:{f:[6500],s:'F',d:0.12}, SH:{f:[2500],s:'F',d:0.12}, F:{f:[1500],s:'F',d:0.09},
+  TH:{f:[5200],s:'F',d:0.08}, HH:{f:[1400],s:'F',d:0.06},
+  Z:{f:[5500],s:'f',d:0.09}, V:{f:[1100],s:'f',d:0.08}, DH:{f:[2400],s:'f',d:0.07},
+  ZH:{f:[2400],s:'f',d:0.10},
+  P:{f:[1100],s:'S',d:0.05}, T:{f:[3600],s:'S',d:0.05}, K:{f:[2100],s:'S',d:0.06},
+  B:{f:[850],s:'s',d:0.05},  D:{f:[2600],s:'s',d:0.05}, G:{f:[1700],s:'s',d:0.06},
+  CH:{f:[2500],s:'S',d:0.06}, JH:{f:[2300],s:'s',d:0.06}
+};
+
+// Announcer vocabulary, hand-authored so the fixed lines are always intelligible.
+const DICT = {
+  riders:'R AY D ER Z', start:'S T AA R T', your:'Y AO R', engines:'EH N JH IH N Z',
+  welcome:'W EH L K AH M', to:'T UW', the:'DH AH', deadly:'D EH D L IY',
+  five:'F AY V', hundred:'HH AH N D R IH D', green:'G R IY N', flag:'F L AE G',
+  takes:'T EY K S', lead:'L IY D', is:'IH Z', out:'AW T', in:'IH N',
+  front:'F R AH N T', hits:'HH IH T S', oh:'OW', down:'D AW N', of:'AH V',
+  race:'R EY S', spectacular:'S P EH K T AE K Y AH L ER', wreck:'R EH K',
+  for:'F AO R', you:'Y UW', are:'AA R', wrecked:'R EH K T', goes:'G OW Z',
+  our:'AW ER', contender:'K AH N T EH N D ER', what:'W AH T', a:'AH', hit:'HH IH T',
+  final:'F AY N AH L', lap:'L AE P', last:'L AE S T', chance:'CH AE N S',
+  one:'W AH N', go:'G OW', and:'AH N D', that:'DH AE T', checkered:'CH EH K ER D',
+  victory:'V IH K T ER IY', finish:'F IH N IH SH', flag:'F L AE G',
+  // character names
+  bone:'B OW N', baron:'B AE R AH N', count:'K AW N T', stitch:'S T IH CH',
+  lycan:'L AY K AH N', hex:'HH EH K S', masked:'M AE S K T', rot:'R AA T',
+  ember:'EH M B ER'
+};
+
+// Rough letter->phoneme fallback for any word not in the dictionary.
+function pronounce(w){
+  w=String(w).toLowerCase().replace(/[^a-z]/g,'');
+  if(!w) return [];
+  if(DICT[w]) return DICT[w].split(' ');
+  const V={a:'AE',e:'EH',i:'IH',o:'AA',u:'AH',y:'IH'};
+  const C={b:'B',c:'K',d:'D',f:'F',g:'G',h:'HH',j:'JH',k:'K',l:'L',m:'M',
+           n:'N',p:'P',q:'K',r:'R',s:'S',t:'T',v:'V',w:'W',x:'K S',z:'Z'};
+  let s=w.replace(/sh/g,'1').replace(/ch/g,'2').replace(/th/g,'3').replace(/ng/g,'4');
+  const out=[];
+  for(const c of s){
+    if(c==='1')out.push('SH'); else if(c==='2')out.push('CH');
+    else if(c==='3')out.push('TH'); else if(c==='4')out.push('NG');
+    else if(V[c])out.push(V[c]); else if(C[c])out.push(...C[c].split(' '));
+  }
+  return out;
+}
+
+let _annNB=null;
+function fricNoise(){ if(_annNB) return _annNB;
+  const b=actx.createBuffer(1,actx.sampleRate,actx.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  _annNB=b; return b; }
+
+// Render one phoneme into the horn chain at time t.
+function annPhon(ch,ph,t,dur,f0){
+  const s=ph.s;
+  if(s==='v'||s==='n'){                       // voiced: buzz through 3 formant bands
+    const startF=ph.f, endF=ph.g||ph.f;
+    const env=actx.createGain();
+    const pk=s==='n'?0.20:0.34;
+    env.gain.setValueAtTime(0.0001,t);
+    env.gain.linearRampToValueAtTime(pk,t+0.018);
+    env.gain.setValueAtTime(pk,t+dur*0.68);
+    env.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    env.connect(ch.input);
+    for(let k=0;k<3;k++){
+      if(startF[k]==null && ph.f[k]==null) continue;
+      const bp=actx.createBiquadFilter(); bp.type='bandpass';
+      const a=startF[k]||ph.f[k]||2500, b=endF[k]||ph.f[k]||2500;
+      bp.frequency.setValueAtTime(a,t);
+      bp.frequency.linearRampToValueAtTime(b,t+dur);
+      bp.Q.value=k===0?9:6;
+      const g=actx.createGain(); g.gain.value=k===0?1:(k===1?0.5:0.28);
+      bp.connect(g); g.connect(env);
+      const o=actx.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(f0,t);
+      o.frequency.linearRampToValueAtTime(f0*0.985,t+dur);
+      const lfo=actx.createOscillator(), ld=actx.createGain();   // slight vibrato = life
+      lfo.frequency.value=5.4; ld.gain.value=f0*0.006; lfo.connect(ld); ld.connect(o.frequency);
+      o.connect(bp); o.start(t); o.stop(t+dur+0.02); lfo.start(t); lfo.stop(t+dur+0.02);
+    }
+    return;
+  }
+  if(s==='F'||s==='f'){                        // fricative: noise (+buzz if voiced)
+    const src=actx.createBufferSource(); src.buffer=fricNoise(); src.loop=true;
+    const bp=actx.createBiquadFilter(); bp.type=ph.f[0]>4000?'highpass':'bandpass';
+    bp.frequency.value=ph.f[0]; bp.Q.value=2.2;
+    const env=actx.createGain(); const pk=s==='f'?0.16:0.22;
+    env.gain.setValueAtTime(0.0001,t);
+    env.gain.linearRampToValueAtTime(pk,t+0.02);
+    env.gain.setValueAtTime(pk,t+dur*0.6);
+    env.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    src.connect(bp); bp.connect(env); env.connect(ch.input);
+    src.start(t); src.stop(t+dur+0.02);
+    if(s==='f'){
+      const o=actx.createOscillator(); o.type='sawtooth'; o.frequency.value=f0;
+      const g=actx.createGain(); g.gain.setValueAtTime(0.0001,t);
+      g.gain.linearRampToValueAtTime(0.06,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g); g.connect(ch.input); o.start(t); o.stop(t+dur+0.02);
+    }
+    return;
+  }
+  // stop: brief closure then a burst at release
+  const rel=t+Math.min(0.03,dur*0.55);
+  const src=actx.createBufferSource(); src.buffer=fricNoise();
+  const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=ph.f[0]; bp.Q.value=1.5;
+  const env=actx.createGain(); const pk=s==='s'?0.18:0.26;
+  env.gain.setValueAtTime(0.0001,rel);
+  env.gain.linearRampToValueAtTime(pk,rel+0.006);
+  env.gain.exponentialRampToValueAtTime(0.0001,rel+0.055);
+  src.connect(bp); bp.connect(env); env.connect(ch.input);
+  src.start(rel); src.stop(rel+0.08);
+  if(s==='s'){                                 // voiced stop: low buzz through the closure
+    const o=actx.createOscillator(); o.type='sawtooth'; o.frequency.value=(f0||100)*0.85;
+    const g=actx.createGain(); g.gain.setValueAtTime(0.11,t); g.gain.exponentialRampToValueAtTime(0.0001,rel+0.01);
+    o.connect(g); g.connect(ch.input); o.start(t); o.stop(rel+0.03);
+  }
+}
+
+function paVoice(text, prox, urgency){
+  try{
+    const ch=paChain(prox), t0=actx.currentTime;
+    const excl=/[!?]/.test(text);
+    const words=String(text).split(/\s+/).filter(Boolean);
+    const weak={the:1,to:1,a:1,of:1,is:1,in:1,and:1,for:1,your:1,our:1,are:1,you:1};
+    // flatten to a phoneme stream with stress + word-boundary markers
+    const stream=[];
+    words.forEach((w,wi)=>{
+      const phs=pronounce(w); if(!phs.length) return;
+      const stressed=!weak[w.toLowerCase().replace(/[^a-z]/g,'')];
+      phs.forEach(p=>{ if(PH[p]) stream.push({p,stress:stressed}); });
+      stream.push({p:'_'});                    // word gap
+    });
+    const nV=Math.max(1, stream.filter(x=>PH[x.p]&&PH[x.p].s==='v').length);
+    const rate=urgency?0.84:1.0;
+    const f0base=(urgency?126:102)+Math.random()*10;
+    let vi=0, t=t0;
+    for(let i=0;i<stream.length;i++){
+      const it=stream[i];
+      if(it.p==='_'){ t+=0.05*rate; continue; }
+      const ph=PH[it.p]; if(!ph) continue;
+      const voiced=(ph.s==='v'||ph.s==='n');
+      const dur=ph.d*rate*(it.stress&&voiced?1.15:1);
+      // pitch: declination across the line + accent + phrase-final move
+      let f0=f0base*(1-0.24*(vi/nV));
+      if(voiced){
+        if(it.stress) f0*=1.07;
+        if(i>=stream.length-3) f0*=excl?1.14:0.9;   // final rise (!) or fall (.)
+        vi++;
+      }
+      annPhon(ch,ph,t,dur,f0);
+      t+=dur+0.006;
+    }
+    setTimeout(()=>{ try{ch.out.disconnect();}catch(e){} }, (t-t0+1.2)*1000);
+    return t-t0;
+  }catch(e){ return 0; }
+}
+function announce(text, urgency){
+  if(!announcerOn || !soundOn || !TH.announcer) return;
+  // The PA may be the first sound of the session, so make sure there is a
+  // context to build it on — paVoice and paKeyUp both assume one exists.
+  try{
+    if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+  }catch(e){ return; }
+  const prox=paProximity();
+  if(prox<=0.02) return;                          // out of earshot of every tower
+  const now=Date.now();
+  if(now-_annT < (urgency?1200:3200)) return;      // don't talk over himself
+  _annT=now;
+  paKeyUp(prox);
+  /* The horn IS the announcer. The browser's speech synthesiser used to run
+     alongside it, but the two voices talked over each other — and speech
+     output cannot be routed through the horn chain, so it always sounded
+     like a separate person in the room rather than the tannoy. Gone. */
+  setTimeout(()=>paVoice(text,prox,urgency), 150);
+}
+const ANN={
+  start:  ['Riders, start your engines!','Welcome to the Deadly Five Hundred!','Green flag, green flag!'],
+  lead:   ['{n} takes the lead!','{n} is out in front!','{n} hits the front!'],
+  wreck:  ['Oh! {n} is down!','{n} is out of the race!','Spectacular wreck for {n}!'],
+  player: ['You are wrecked!','Down goes our contender!','What a hit!'],
+  lastLap:['Final lap!','Last lap, last chance!','One lap to go!'],
+  win:    ['And that is the checkered flag!','Victory!','What a finish!']
+};
+function annSay(key,name,urgency){
+  const arr=ANN[key]; if(!arr) return;
+  const line=arr[(Math.random()*arr.length)|0].replace('{n}', name||'');
+  announce(line, urgency);
+}
 function crowdCheer(type){ if(!eng||!soundOn||!actx) return; try{
   const now=actx.currentTime, woods=eng.woods, base=woods?0.05:0.055;
   eng.cg.gain.cancelScheduledValues(now);
