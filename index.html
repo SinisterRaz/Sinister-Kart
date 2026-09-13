@@ -4174,7 +4174,7 @@ function setHudMode(){ const el=document.querySelector('.hud-tl'); if(!el) retur
   else el.innerHTML='LAP <span class="v" id="hLap">1/3</span><br>TIME <span class="v" id="hTime">0:00.0</span><br>BEST <span class="v" id="hBest">--:--</span>';
 }
 function battleFinish(){
-  state='finish'; musicStop();
+  state='finish'; engineStop(); musicStop();
   let title, placeStr, rows;
   if(battleMode==='ctf'){
     const R=CTF?CTF.caps[0]:0, B=CTF?CTF.caps[1]:0, myTeam=player.team===0?'RED':'BLUE';
