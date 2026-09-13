@@ -795,7 +795,7 @@ const ZONE_PROPS={
   camp: ['cabin','cabin','tent','campfire','canoe','pinesquat']   // signs are placed as landmarks, not scattered
 };
 function buildDecor(){
-  DECOR=[]; OBST=[]; const N=CENTER.length, types=TH.decor;
+  DECOR=[]; OBST=[]; COVER=[]; CTF=null; const N=CENTER.length, types=TH.decor;
   if(TH.arena){ buildArena(N); return; }
   if(TH.speedway){ buildSpeedwayDecor(N); return; }
   SPEEDWALL=[]; SPEEDWALL_IN=[]; SPEEDSTAND=[]; TOWER=null;
@@ -1230,35 +1230,63 @@ function buildTransylvania(N){
   }
   buildLandmarks(N);
 }
+function arenaCTF(wc,R){                                   // research-based CTF map: lanes, chokes, defensible bases
+  for(const dy of [wc-R*0.24, wc+R*0.24]){                 // two dividers // to base axis -> top/mid/bottom lanes, central crossing gap
+    arenaBarrier(wc-R*0.35, dy, 0, 9, 'wall'); arenaBarrier(wc+R*0.35, dy, 0, 9, 'wall'); }
+  for(const bx of [wc-R*0.7, wc+R*0.7]){ const s2=(bx<wc?1:-1);   // C-shaped flag rooms, opening faces centre
+    arenaBarrier(bx-s2*R*0.14, wc, Math.PI/2, 6, 'wall');
+    arenaBarrier(bx-s2*R*0.07, wc-R*0.17, 0, 3, 'wall');
+    arenaBarrier(bx-s2*R*0.07, wc+R*0.17, 0, 3, 'wall'); }
+  arenaBarrier(wc, wc-R*0.62, 0, 9, 'treeline');           // flank treelines
+  arenaBarrier(wc, wc+R*0.62, 0, 9, 'treeline');
+}
+function arenaBarrier(cx,cy,ang,n,kind){ const wall=(kind!=='treeline'), step=wall?50:74;
+  for(let i=0;i<n;i++){ const t=(i-(n-1)/2)*step, x=cx+Math.cos(ang)*t, y=cy+Math.sin(ang)*t;
+    if(wall){ DECOR.push({x,y,type:'wallseg',s:2.6,dv:Math.random()}); COVER.push({x,y,r:40}); }
+    else { DECOR.push({x,y,type:'deadtree',s:2.6+Math.random()*1.1,dv:Math.random()}); COVER.push({x,y,r:24}); } } }
 function buildArena(N){
   COVER=[];
   if(TH.arenaKind==='yard'){ buildArenaYard(N); return; }
   const wc=WORLD/2, R=ROADW, rim=WALLR-30;
   DECOR.push({x:wc,y:wc,type:'carpile',s:5.5,dv:0.5});                     // central burning wreck-pile (hellgate)
   DECOR.push({x:wc,y:wc,type:'dumpsterfire',s:4.2,dv:0.3});
-  COVER.push({x:wc,y:wc,r:80});                                            // central hellgate is solid cover
+  COVER.push({x:wc,y:wc,r:58});                                            // central hellgate is solid cover
   for(let i=0;i<66;i++){ const a=(i/66)*6.28318, r=rim-Math.random()*44;   // jagged wall of wreckage + spikes + the impaled
     const roll=Math.random(), type = roll<0.4?'wreck':roll<0.6?'carpile':roll<0.75?'impaled':roll<0.9?'rock':'dumpsterfire';
     DECOR.push({x:wc+Math.cos(a)*r, y:wc+Math.sin(a)*r, type, s:(type==='carpile'||type==='impaled'?2.6:2.0)+Math.random()*1.2, dv:Math.random()}); }
   for(let i=0;i<16;i++){ const a=(i/16)*6.28318, r=rim-8;                  // oil-drum fires ring the top
     DECOR.push({x:wc+Math.cos(a)*r, y:wc+Math.sin(a)*r, type:'dumpsterfire', s:2.4, dv:Math.random()}); }
+  if(battleMode==='ctf'){ arenaCTF(wc,R); return; }
   for(let i=0;i<16;i++){ const a=Math.random()*6.28318, r=170+Math.random()*(R-360);  // scattered cover: car husks + rubble
     const cx=wc+Math.cos(a)*r, cy=wc+Math.sin(a)*r;
-    DECOR.push({x:cx, y:cy, type:(Math.random()<0.5?'wreck':'rock'), s:1.8+Math.random()*1.4, dv:Math.random()}); COVER.push({x:cx,y:cy,r:48}); }
+    DECOR.push({x:cx, y:cy, type:(Math.random()<0.5?'wreck':'rock'), s:1.8+Math.random()*1.4, dv:Math.random()}); COVER.push({x:cx,y:cy,r:34}); }
+  arenaBarrier(wc-R*0.30, wc-R*0.34, 0.6, 4, 'wall');     // visible walls shape the lanes (no straight base-to-base run)
+  arenaBarrier(wc+R*0.30, wc+R*0.34, 0.6, 4, 'wall');
+  arenaBarrier(wc-R*0.34, wc+R*0.30, -0.6, 4, 'wall');
+  arenaBarrier(wc+R*0.34, wc-R*0.30, -0.6, 4, 'wall');
+  arenaBarrier(wc, wc-R*0.62, 0, 6, 'treeline');          // dead-tree lines on the flanks
+  arenaBarrier(wc, wc+R*0.62, 0, 6, 'treeline');
 }
 function buildArenaYard(N){                                                // asylum block: concrete, floodlights, sandbags
   const wc=WORLD/2, R=ROADW, rim=WALLR-30;
   DECOR.push({x:wc,y:wc,type:'sandbags',s:5.0,dv:0.5});                    // central guard bunker
   DECOR.push({x:wc,y:wc,type:'floodlight',s:4.2,dv:0.3});
-  COVER.push({x:wc,y:wc,r:74});
+  COVER.push({x:wc,y:wc,r:56});
   for(let i=0;i<64;i++){ const a=(i/64)*6.28318, r=rim-Math.random()*40;  // wall: concrete blocks / sandbags / barricades / wrecks
     const roll=Math.random(), type = roll<0.35?'crate':roll<0.55?'sandbags':roll<0.7?'barricade':roll<0.85?'wreck':'rock';
     DECOR.push({x:wc+Math.cos(a)*r, y:wc+Math.sin(a)*r, type, s:2.0+Math.random()*1.1, dv:Math.random()}); }
   for(let i=0;i<10;i++){ const a=(i/10)*6.28318, r=rim-6;                 // floodlight towers ring the yard
     DECOR.push({x:wc+Math.cos(a)*r, y:wc+Math.sin(a)*r, type:'floodlight', s:3.0, dv:Math.random()}); }
+  if(battleMode==='ctf'){ arenaCTF(wc,R); return; }
   for(let i=0;i<14;i++){ const a=Math.random()*6.28318, r=170+Math.random()*(R-360);   // cover + biohazard signage
     const cx=wc+Math.cos(a)*r, cy=wc+Math.sin(a)*r, t=(Math.random()<0.4?'wreck':Math.random()<0.5?'crate':'biohazard');
-    DECOR.push({x:cx, y:cy, type:t, s:1.6+Math.random()*1.3, dv:Math.random()}); if(t!=='biohazard') COVER.push({x:cx,y:cy,r:44}); }
+    DECOR.push({x:cx, y:cy, type:t, s:1.6+Math.random()*1.3, dv:Math.random()}); if(t!=='biohazard') COVER.push({x:cx,y:cy,r:32}); }
+  arenaBarrier(wc-R*0.30, wc-R*0.34, 0.6, 4, 'wall');     // visible concrete walls shape the lanes
+  arenaBarrier(wc+R*0.30, wc+R*0.34, 0.6, 4, 'wall');
+  arenaBarrier(wc-R*0.34, wc+R*0.30, -0.6, 4, 'wall');
+  arenaBarrier(wc+R*0.34, wc-R*0.30, -0.6, 4, 'wall');
+  arenaBarrier(wc, wc-R*0.62, 0, 6, 'treeline');
+  arenaBarrier(wc, wc+R*0.62, 0, 6, 'treeline');
 }
 /* ---- arena death traps: lava fissures, fire geysers, meteor strikes ---- */
 function buildArenaHazards(){ const wc=WORLD/2, R=ROADW, lava=[];
@@ -2452,6 +2480,16 @@ function drawDecor(c,x,y,size,type,v){
     c.fillStyle='rgba(40,38,48,.85)'; c.beginPath(); c.moveTo(-s*0.5,0);c.lineTo(s*0.5,0);c.lineTo(s*0.4,-s*0.26);c.lineTo(s*0.18,-s*0.44);c.lineTo(-s*0.26,-s*0.44);c.lineTo(-s*0.5,-s*0.22);c.closePath(); c.fill();
     c.fillStyle='rgba(160,160,180,.5)'; c.fillRect(-s*0.24,-s*0.42,s*0.4,s*0.2);
     c.fillStyle='rgba(255,60,60,'+(0.5+0.5*gl)+')'; c.fillRect(-s*0.06,-s*0.5,s*0.12,s*0.06);
+  } else if(type==='wallseg'){                                    // solid, VISIBLE arena wall slab
+    const yard=(TH.arenaKind==='yard'), w=s*0.72, h=-s*1.3;
+    c.fillStyle=yard?'#39413a':'#2e2420'; c.fillRect(-w,h,w*2,-h);                     // slab body
+    c.fillStyle=yard?'#4a534a':'#3a2c24'; c.fillRect(-w,h,w*2,Math.max(1,s*0.12));     // lit top edge
+    c.strokeStyle=yard?'rgba(150,160,150,.25)':'rgba(120,80,50,.35)'; c.lineWidth=Math.max(1,s*0.028);
+    for(let x=-w+w*0.5;x<w-0.01;x+=w*0.5){ c.beginPath(); c.moveTo(x,h); c.lineTo(x,0); c.stroke(); }  // panel seams
+    c.beginPath(); c.moveTo(-w,h*0.5); c.lineTo(w,h*0.5); c.stroke();
+    if(yard){ c.fillStyle='rgba(200,180,60,.45)'; c.fillRect(-w,h*0.34,w*2,Math.max(1,s*0.07)); }       // hazard stripe
+    else { c.fillStyle='rgba(255,80,20,.16)'; c.fillRect(-w,-s*0.42,w*2,s*0.42); }                       // scorch at base
+    c.fillStyle=yard?'#39413a':'#2e2420'; for(let cx=-w;cx<w-0.01;cx+=w*0.44){ c.fillRect(cx,h-s*0.1,w*0.3,s*0.1); }  // crenellated top
   } else if(type==='church'){                                     // landmark: steeple + cross silhouette
     const bw=s*0.46, bt=-s*0.95;
     c.fillStyle='#22190f'; c.fillRect(-bw,bt,bw*2,-bt);
@@ -2490,6 +2528,7 @@ function drawDecor(c,x,y,size,type,v){
 let ZOMB=[];
 let OBST=[];   // smashable in-road obstacles (city)
 let COVER=[];  // solid, shot-blocking cover (arenas)
+let CTF=null;  // capture-the-flag state
 function buildZombies(){ ZOMB=[]; HORDE_T=3; if(!TH.zombies) return; const N=CENTER.length;
   if(TH.arena){ const wc=WORLD/2; for(let k=0;k<26;k++){ const a=Math.random()*6.28318, r=Math.random()*(ROADW*0.9);
     ZOMB.push({x:wc+Math.cos(a)*r, y:wc+Math.sin(a)*r, ang:Math.random()*7, t:0, dead:0}); } return; }
@@ -2797,8 +2836,11 @@ const CHARS=[
 
 function placeGrid(){
   if(TH.arena){ const wc=WORLD/2, R=ROADW*0.78; karts=[player,...rivals]; karts.forEach((k,i)=>k.team=i%2);
-    karts.forEach((k,i)=>{ const a=(i/karts.length)*6.28318;
-      k.x=wc+Math.cos(a)*R; k.y=wc+Math.sin(a)*R; k.ang=Math.atan2(wc-k.y,wc-k.x);
+    CTF=null; const ctf=(battleMode==='ctf'); if(ctf) buildCTF();
+    karts.forEach((k,i)=>{
+      if(ctf){ const bx=ROADW*0.7*(k.team===0?-1:1); k.x=wc+bx+(Math.random()*2-1)*160; k.y=wc+(Math.random()*2-1)*300; }
+      else { const a=(i/karts.length)*6.28318; k.x=wc+Math.cos(a)*R; k.y=wc+Math.sin(a)*R; }
+      k.ang=Math.atan2(wc-k.y,wc-k.x);
       k.spd=0;k.vx=0;k.vy=0;k.steer=0;k.drift=0;k.lap=0;k.next=1;k.frac=0;k.wp=4;
       k.hp=(k.maxhp||MAXHP);k.dead=0;k.inv=0;k.fireCd=0;k.power=null;k.powerT=0;k.air=0;k._wasAir=0;k.weapon='bolt';k.ammo=Infinity;k.kills=0;k.deaths=0;
       fullNearest(k); k._pnode=k.node; });
@@ -3068,6 +3110,18 @@ function aiBattle(k){                              // arena AI: aggressive free-
   let crate=null,cd=1e9; if(k.weapon==='bolt'){ for(const o of TOBJ){ if(o.type!=='box'||o.cool>0)continue; const d=Math.hypot(o.x-k.x,o.y-k.y); if(d<cd){cd=d;crate=o;} } }
   let gx,gy;
   if(crate && cd<230){ gx=crate.x; gy=crate.y; } else if(tgt){ gx=tgt.x; gy=tgt.y; } else { gx=wc; gy=wc; }
+  if(TH.arena && battleMode==='ctf' && CTF){                    // CTF roles: carry home / defend our flag / steal theirs
+    const carrying=CTF.flags.find(f=>f.carrier===k);
+    if(carrying){ const b=CTF.bases[k.team]; gx=b.x; gy=b.y; }
+    else {
+      const ownStolen=CTF.flags.find(f=>f.team===k.team && f.state==='carried' && f.carrier);   // enemy has OUR flag
+      const enemyFlag=CTF.flags.find(f=>f.team!==k.team && f.state!=='carried');                 // theirs, grabbable
+      const defend = ownStolen && (!enemyFlag || Math.floor(k._id)%2===0);                       // split team: ~half intercept
+      if(defend){ gx=ownStolen.carrier.x; gy=ownStolen.carrier.y; }                              // chase the carrier down
+      else if(enemyFlag){ gx=enemyFlag.x; gy=enemyFlag.y; }
+      else { const ec=CTF.flags.find(f=>f.team!==k.team && f.carrier); if(ec&&ec.carrier){ gx=ec.carrier.x; gy=ec.carrier.y; } }
+    }
+  }
   const juke=Math.sin(performance.now()/650 + k._id)*0.12;
   let want=Math.atan2(gy-k.y,gx-k.x)+juke, diff=want-k.ang;
   while(diff>Math.PI)diff-=6.28318; while(diff<-Math.PI)diff+=6.28318;
@@ -3075,6 +3129,10 @@ function aiBattle(k){                              // arena AI: aggressive free-
   const dc=Math.hypot(k.x-wc,k.y-wc), rim=ROADW*0.86;           // peel off the wall
   if(dc>rim){ let id=Math.atan2(wc-k.y,wc-k.x)-k.ang; while(id>Math.PI)id-=6.28318; while(id<-Math.PI)id+=6.28318;
     const over=Math.min(1,(dc-rim)/(ROADW*0.14)); steer=steer*(1-over)+clamp(id*2.1,-1,1)*over; }
+  if(COVER.length){ const ca=Math.cos(k.ang), sa=Math.sin(k.ang); let bf=1e9, bs=0, hit=false;   // swerve around the nearest barrier ahead
+    for(const cv of COVER){ const rx=cv.x-k.x, ry=cv.y-k.y, fwd=rx*ca+ry*sa; if(fwd<10||fwd>190) continue;
+      const side=-rx*sa+ry*ca; if(Math.abs(side)<cv.r+40 && fwd<bf){ bf=fwd; bs=side; hit=true; } }
+    if(hit){ const dir=bs>0?-1:1, urg=1-bf/190; steer=clamp(steer*(1-urg*0.6)+dir*urg*1.7,-1,1); } }
   const dist=tgt?Math.hypot(tgt.x-k.x,tgt.y-k.y):200;
   return {gas:true, brake:(dist<38&&Math.abs(k.spd)>150), steer, hop:false, boost:(k.meter>0.55&&dist>360&&Math.abs(diff)<0.5)};
 }
@@ -3327,11 +3385,21 @@ function render(){
     const relx=wx-camx,rely=wy-camy,depth=relx*cf+rely*sf; if(depth<8||depth>1300)continue;
     const lat=relx*rx+rely*ry,pp=A_DIST/depth; if(pp<1)continue; const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
     sprites.push({sx:sxp,sy:HORIZON+pp*0.72,size:clamp(pp*0.12,2,9),depth,kind:'beamdot',bt:bm.type,life:bm.life}); } }
+  if(CTF){
+    for(const b of CTF.bases){ const relx=b.x-camx,rely=b.y-camy,depth=relx*cf+rely*sf; if(depth<8||depth>1300)continue;
+      const lat=relx*rx+rely*ry,pp=A_DIST/depth; if(pp<1)continue; const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
+      sprites.push({sx:sxp,sy:HORIZON+pp,size:clamp(pp*0.5,8,80),depth,kind:'base',team:b.team}); }
+    for(const f of CTF.flags){ const relx=f.x-camx,rely=f.y-camy,depth=relx*cf+rely*sf; if(depth<8||depth>1300)continue;
+      const lat=relx*rx+rely*ry,pp=A_DIST/depth; if(pp<1)continue; const sxp=BW/2+(lat/(depth*HFOV))*(BW/2);
+      sprites.push({sx:sxp,sy:HORIZON+pp*0.72,size:clamp(pp*0.3,6,42),depth,kind:'flag',team:f.team}); }
+  }
   sprites.sort((a,b)=>b.depth-a.depth);
   for(const s of sprites){
     if(s.kind==='proj') drawProj(bctx,s.sx,s.sy,s.size,s.ptype);
     else if(s.kind==='pool') drawPool(bctx,s.sx,s.sy,s.size,s.life);
     else if(s.kind==='beamdot') drawBeamDot(bctx,s.sx,s.sy,s.size,s.bt,s.life);
+    else if(s.kind==='base') drawBase(bctx,s.sx,s.sy,s.size,s.team);
+    else if(s.kind==='flag') drawFlag(bctx,s.sx,s.sy,s.size,s.team);
     else if(s.kind==='expl') drawExpl(bctx,s.sx,s.sy,s.size,s.m);
     else if(s.kind==='obst') drawObstacle(bctx,s.sx,s.sy,s.size,s.otype,s.dv);
     else if(s.kind==='tobj') drawTrackObj(bctx,s.sx,s.sy,s.size,s.ttype);
@@ -3343,6 +3411,9 @@ function render(){
       if(s.k){ bctx.fillStyle='#fff'; bctx.font='bold '+Math.max(9,(s.size*0.55)|0)+'px Georgia,serif'; bctx.textAlign='center'; bctx.fillText(Math.ceil(s.k.dead), s.sx, s.sy-s.size*1.0); } }
     else {
       drawKartSprite(bctx,s.sx,s.sy,s.size,s.k.char,0);
+      if(TH.arena && (battleMode==='tdm'||battleMode==='ctf') && s.k && s.size>6){   // team marker chevron
+        const tc=s.k.team===0?'#ff4a4a':'#4a8cff', ty=s.sy-s.size*1.28, hx=s.size*0.34;
+        bctx.fillStyle=tc; bctx.beginPath(); bctx.moveTo(s.sx,ty); bctx.lineTo(s.sx-hx,ty-s.size*0.28); bctx.lineTo(s.sx+hx,ty-s.size*0.28); bctx.closePath(); bctx.fill(); }
       if(s.k && s.k.hp<(s.k.maxhp||MAXHP) && s.size>7){   // floating health bar when hurt
         const bw=s.size*0.6, fr=Math.max(0,s.k.hp/(s.k.maxhp||MAXHP)), bx=s.sx-bw/2, by=s.sy-s.size*1.1;
         bctx.fillStyle='rgba(0,0,0,.6)'; bctx.fillRect(bx-1,by-1,bw+2,4);
@@ -3753,6 +3824,7 @@ const MENUS={
   options:{ kick:'', title:'OPTIONS', items:[
     {label:()=>'SOUND:  '+(soundOn?'ON':'OFF'), act:()=>{ soundOn=!soundOn; if(!soundOn){engineStop();musicStop();} paintMenuSel(); }},
     {label:()=>'MUSIC:  '+(musicOn?'ON':'OFF'), act:()=>{ musicOn=!musicOn; if(!musicOn)musicStop(); else if(state==='race')musicStart(); else menuMusic(); paintMenuSel(); }},
+    {label:()=>'MUSIC VOL:  '+Math.round(musicVol*100)+'%', act:()=>{ musicVol=Math.round((musicVol+0.25)*20)/20; if(musicVol>1.0001)musicVol=0; if(musicEl)musicEl.volume=musicVol; try{localStorage.setItem('sinisterKartMusVol',musicVol);}catch(e){} paintMenuSel(); }},
     {label:()=>'TRACK INTRO:  '+(cineOn?'ON':'OFF'), act:()=>{ cineOn=!cineOn; paintMenuSel(); }},
     {label:()=>'DIFFICULTY:  '+(diffMode==='auto'?'ADAPTIVE':diffMode.toUpperCase()),
       act:()=>{ const seq=['auto','easy','normal','hard'];
@@ -3833,16 +3905,16 @@ function buildTrackRow(){ const row=document.getElementById('trackRow'); row.inn
     cd.innerHTML='<span style="color:rgb('+t.col.glow+')">'+(t.arena?'☠':'◈')+'</span><div class="tn">'+t.name+'</div>';
     cd.onclick=()=>{ if(selTrack===i){ confirmTrack(); } else { selTrack=i; renderTrackSel(); } }; row.appendChild(cd); }); }
 function renderBattleOpts(){ const bo=document.getElementById('battleOpts'); if(!bo) return;
-  const modes=[['dm','DEATHMATCH'],['tdm','TEAM DM'],['ctf','CAPTURE FLAG · SOON']];
+  const modes=[['dm','DEATHMATCH'],['tdm','TEAM DM'],['ctf','CAPTURE FLAG']];
   const wins= winType==='time'?[[120,'2 MIN'],[180,'3 MIN'],[300,'5 MIN']]:[[10,'10 KILLS'],[20,'20 KILLS'],[30,'30 KILLS']];
   let h='<div class="tn" style="opacity:.6;margin-bottom:3px">MODE</div>';
-  h+=modes.map(function(x){return '<button class="btn bsel'+(battleMode===x[0]?' on':'')+(x[0]==='ctf'?' soon':'')+'" onclick="setBattleMode(\''+x[0]+'\')">'+x[1]+'</button>';}).join(' ');
+  h+=modes.map(function(x){return '<button class="btn bsel'+(battleMode===x[0]?' on':'')+'" onclick="setBattleMode(\''+x[0]+'\')">'+x[1]+'</button>';}).join(' ');
   h+='<div class="tn" style="opacity:.6;margin:8px 0 3px">WIN BY</div>';
   h+='<button class="btn bsel'+(winType==='time'?' on':'')+'" onclick="setWinType(\'time\')">TIME</button> ';
   h+='<button class="btn bsel'+(winType==='score'?' on':'')+'" onclick="setWinType(\'score\')">SCORE</button> &nbsp;&nbsp; ';
   h+=wins.map(function(x){return '<button class="btn bsel'+(winVal==x[0]?' on':'')+'" onclick="setWinVal('+x[0]+')">'+x[1]+'</button>';}).join(' ');
   bo.innerHTML=h; }
-function setBattleMode(m){ if(m==='ctf'){ beep(200,.12); return; } battleMode=m; renderBattleOpts(); beep(620,.05); }
+function setBattleMode(m){ battleMode=m; renderBattleOpts(); beep(620,.05); }
 function setWinType(t){ winType=t; winVal=(t==='time'?180:20); renderBattleOpts(); beep(620,.05); }
 function setWinVal(v){ winVal=v; renderBattleOpts(); beep(620,.05); }
 function teamKills(t){ let s=0; for(const k of [player,...rivals]) if(k.team===t) s+=(k.kills||0); return s; }
@@ -3927,7 +3999,7 @@ function countdown(n){
     if(v===0){ cn.textContent='GO!'; beep(880,.18);
       setTimeout(()=>{el.classList.remove('show');},700);
       state='race'; raceStart=performance.now(); player.lapStart=raceStart; engineStart();
-      if(TH.arena){ matchTime = winType==='time'?winVal:600; } setHudMode();
+      if(TH.arena){ matchTime = winType==='time'?winVal:600; if(battleMode==='tdm'||battleMode==='ctf') flashMsg('YOU ARE '+(player.team===0?'RED TEAM':'BLUE TEAM')); } setHudMode();
       musicStop(); musicStart();          // swap the menu theme for the circuit score
       annSay('start',null,true);
       rivals.forEach(r=>r.lapStart=raceStart);
@@ -4065,8 +4137,38 @@ function onPlayerLap(){
   el.animate([{opacity:0,transform:'translateX(-50%) scale(.7)'},{opacity:1,transform:'translateX(-50%) scale(1)'},{opacity:0,transform:'translateX(-50%) scale(1.1)'}],{duration:1400});
   beep(660,.1);
 }
+function ctfTarget(){ return winType==='score'? Math.max(2,Math.round(winVal/6)) : 99; }
+function buildCTF(){ const wc=WORLD/2, bx=ROADW*0.7;
+  CTF={ caps:[0,0],
+    bases:[{team:0,x:wc-bx,y:wc},{team:1,x:wc+bx,y:wc}],
+    flags:[{team:0,x:wc-bx,y:wc,state:'base',carrier:null,dropT:0},{team:1,x:wc+bx,y:wc,state:'base',carrier:null,dropT:0}] }; }
+function ctfReturn(f){ const b=CTF.bases[f.team]; f.x=b.x; f.y=b.y; f.state='base'; f.carrier=null; f.dropT=0; }
+function updateCTF(dt){ if(!CTF) return; const karts=[player,...rivals];
+  for(const f of CTF.flags){
+    if(f.state==='carried'){
+      if(!f.carrier || f.carrier.dead>0){ if(f.carrier){ f.x=f.carrier.x; f.y=f.carrier.y; } f.state='dropped'; f.carrier=null; f.dropT=8; sfx('pickup'); }
+      else { f.x=f.carrier.x; f.y=f.carrier.y; }
+    } else if(f.state==='dropped'){ f.dropT-=dt; if(f.dropT<=0) ctfReturn(f); }
+  }
+  for(const k of karts){ if(k.dead>0) continue;
+    for(const f of CTF.flags){ const d=Math.hypot(k.x-f.x,k.y-f.y);
+      if(f.team!==k.team){ if((f.state==='base'||f.state==='dropped') && d<32){ f.state='carried'; f.carrier=k; if(k.isPlayer) flashMsg('FLAG TAKEN!'); sfx('pickup'); } }
+      else { if(f.state==='dropped' && d<32){ ctfReturn(f); if(k.isPlayer) flashMsg('FLAG RETURNED'); sfx('pickup'); } } }
+    const carrying=CTF.flags.find(f=>f.carrier===k);
+    if(carrying){ const home=CTF.bases[k.team];
+      if(Math.hypot(k.x-home.x,k.y-home.y)<60){ CTF.caps[k.team]++; ctfReturn(carrying); sfx('boom'); flashMsg((k.isPlayer?'CAPTURE! +1':(k.team===0?'RED SCORES':'BLUE SCORES'))); } }
+  }
+}
+function drawBase(c,x,y,s,team){ c.save(); c.translate(x,y); const col=team===0?'224,60,60':'60,120,255';
+  const g=c.createRadialGradient(0,0,1,0,0,s); g.addColorStop(0,'rgba('+col+',.35)'); g.addColorStop(1,'rgba('+col+',0)');
+  c.fillStyle=g; c.beginPath(); c.ellipse(0,0,s,s*0.4,0,0,7); c.fill();
+  c.strokeStyle='rgba('+col+',.85)'; c.lineWidth=Math.max(1,s*0.05); c.beginPath(); c.ellipse(0,-s*0.02,s*0.7,s*0.28,0,0,7); c.stroke();
+  c.beginPath(); c.moveTo(0,0); c.lineTo(0,-s*0.55); c.stroke(); c.restore(); }
+function drawFlag(c,x,y,s,team){ c.save(); c.translate(x,y); const col='rgb('+(team===0?'224,60,60':'60,120,255')+')';
+  c.strokeStyle='#cfc8b8'; c.lineWidth=Math.max(1,s*0.08); c.lineCap='round'; c.beginPath(); c.moveTo(0,0); c.lineTo(0,-s*1.15); c.stroke();
+  c.fillStyle=col; c.beginPath(); c.moveTo(0,-s*1.15); c.lineTo(s*0.7,-s*0.95); c.lineTo(0,-s*0.75); c.closePath(); c.fill(); c.restore(); }
 function setHudMode(){ const el=document.querySelector('.hud-tl'); if(!el) return;
-  if(TH.arena) el.innerHTML = (battleMode==='tdm')
+  if(TH.arena) el.innerHTML = (battleMode==='tdm'||battleMode==='ctf')
       ? 'TIME <span class="v" id="hLap">3:00</span><br>RED <span class="v" id="hTime">0</span><br>BLUE <span class="v" id="hBest">0</span>'
       : 'TIME <span class="v" id="hLap">3:00</span><br>KILLS <span class="v" id="hTime">0</span><br>DEATHS <span class="v" id="hBest">0</span>';
   else el.innerHTML='LAP <span class="v" id="hLap">1/3</span><br>TIME <span class="v" id="hTime">0:00.0</span><br>BEST <span class="v" id="hBest">--:--</span>';
@@ -4074,6 +4176,16 @@ function setHudMode(){ const el=document.querySelector('.hud-tl'); if(!el) retur
 function battleFinish(){
   state='finish'; musicStop();
   let title, placeStr, rows;
+  if(battleMode==='ctf'){
+    const R=CTF?CTF.caps[0]:0, B=CTF?CTF.caps[1]:0, myTeam=player.team===0?'RED':'BLUE';
+    const winT = R===B?'DRAW':(R>B?'RED':'BLUE');
+    title = winT==='DRAW'?'DRAW':(winT===myTeam?'YOUR TEAM WINS':'YOUR TEAM LOSES');
+    placeStr='RED '+R+' — '+B+' BLUE'; document.getElementById('finPlace').style.fontSize='1.3rem';
+    rows='<div class="roster-line">🚩 CAPTURES — RED '+R+' vs BLUE '+B+'</div>' + [player,...rivals].slice().sort((a,b)=>(b.kills||0)-(a.kills||0)).map(k=>
+      '<div class="roster-line'+(k.isPlayer?' me':'')+'">'+(k.team===0?'🔴':'🔵')+' '+(k.isPlayer?'YOU':((k.char&&k.char.name)||'BOT'))+' &nbsp;—&nbsp; '+(k.kills||0)+' K</div>').join('');
+    document.getElementById('finKick').textContent=title; document.getElementById('finPlace').textContent=placeStr;
+    document.getElementById('finBody').innerHTML=rows; document.getElementById('againBtn').textContent='▸ REMATCH'; show('scFinish'); return;
+  }
   if(battleMode==='tdm'){
     const R=teamKills(0), B=teamKills(1), myTeam=player.team===0?'RED':'BLUE';
     const winT = R===B?'DRAW':(R>B?'RED':'BLUE');
@@ -4182,12 +4294,14 @@ function loop(now){
     updateArcs(dt);
     updateMob(dt);
     if(TH.arena) updateHazards(dt);
+    if(TH.arena && battleMode==='ctf') updateCTF(dt);
     kartCollisions();
     if(TH.arena) arenaCoverHit();
     updateProgress(player,now);
     if(state==='race') for(const r of rivals) updateProgress(r,now);
     if(TH.arena && state==='race'){ matchTime-=dt; let end=false;
       if(winType==='time'){ if(matchTime<=0) end=true; }
+      else if(battleMode==='ctf'){ if(CTF && (CTF.caps[0]>=ctfTarget()||CTF.caps[1]>=ctfTarget())) end=true; }
       else if(battleMode==='tdm'){ if(teamKills(0)>=winVal||teamKills(1)>=winVal) end=true; }
       else if([player,...rivals].some(k=>(k.kills||0)>=winVal)) end=true;
       if(end){ matchTime=Math.max(0,matchTime); battleFinish(); } }
@@ -4219,8 +4333,9 @@ function loop(now){
     tb.classList.toggle('cooling', player.cool>0);
     document.getElementById('hpFill').style.width=Math.max(0,player.hp/(player.maxhp||MAXHP)*100)+'%';
     if(TH.arena){ const mt=Math.max(0,matchTime|0);
-      document.getElementById('hLap').textContent = winType==='time' ? (mt/60|0)+':'+String(mt%60).padStart(2,'0') : ('TO '+winVal);
+      document.getElementById('hLap').textContent = winType==='time' ? (mt/60|0)+':'+String(mt%60).padStart(2,'0') : ('TO '+(battleMode==='ctf'?ctfTarget():winVal));
       if(battleMode==='tdm'){ document.getElementById('hTime').textContent=teamKills(0); document.getElementById('hBest').textContent=teamKills(1); }
+      else if(battleMode==='ctf'){ document.getElementById('hTime').textContent=CTF?CTF.caps[0]:0; document.getElementById('hBest').textContent=CTF?CTF.caps[1]:0; }
       else { document.getElementById('hTime').textContent=(player.kills||0); document.getElementById('hBest').textContent=(player.deaths||0); }
       document.getElementById('hSpd').textContent=Math.round(player.ground*MPH);
     } else {
@@ -4282,7 +4397,7 @@ function spawnProj(k,w,wk,aa,sp){
 function fireBeam(k,w,wk,a){
   const dx=Math.cos(a),dy=Math.sin(a),maxR=w.range||700; let ex=k.x+dx*maxR,ey=k.y+dy*maxR;
   let coverT=maxR;                                          // ray stops at the nearest cover
-  for(const cv of COVER){ const ox=cv.x-k.x,oy=cv.y-k.y,tp=ox*dx+oy*dy; if(tp<0)continue;
+  if(TH.arena) for(const cv of COVER){ const ox=cv.x-k.x,oy=cv.y-k.y,tp=ox*dx+oy*dy; if(tp<0)continue;
     const perp=Math.abs(ox*(-dy)+oy*dx); if(perp<cv.r){ const enter=tp-Math.sqrt(Math.max(0,cv.r*cv.r-perp*perp)); if(enter>0&&enter<coverT)coverT=enter; } }
   const hits=[]; for(const t of [player,...rivals]){ if(t===k||t.dead>0||t.inv>0)continue;
     const rx=t.x-k.x,ry=t.y-k.y,pr=rx*dx+ry*dy; if(pr<0||pr>maxR||pr>coverT)continue; if(Math.abs(rx*(-dy)+ry*dx)<HIT_R+6)hits.push({t,pr}); }
@@ -4413,6 +4528,7 @@ function drawTrackObj(c,x,y,size,type){
 
 function damageKart(k,amt,owner){
   if(k.dead>0||k.inv>0) return;
+  if(owner && owner!==k && (battleMode==='tdm'||battleMode==='ctf') && TH.arena && owner.team===k.team) return;  // no friendly fire
   k.hp-=amt; EXPL.push({x:k.x,y:k.y,life:0.3,r:0.6});
   if(k.isPlayer) beep(150,.09);
   if(k.hp<=0){
@@ -4439,7 +4555,7 @@ function updateCombat(dt){
     p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt; p.dist+=Math.hypot(p.vx,p.vy)*dt;
     let boom=false,hitK=null;
     if(p.arc){ p.z=(p.z||0)+p.vz*dt; p.vz-=90*dt; if(p.z<=0 && p.dist>40) boom=true; }
-    if(!boom && COVER.length){ for(const cv of COVER){ if(Math.hypot(p.x-cv.x,p.y-cv.y)<cv.r){ boom=true; break; } } }
+    if(!boom && TH.arena && COVER.length){ for(const cv of COVER){ if(Math.hypot(p.x-cv.x,p.y-cv.y)<cv.r){ boom=true; break; } } }
     if(!boom) for(const k of [player,...rivals]){ if(k===p.owner||k.dead>0||k.inv>0)continue; if(Math.hypot(k.x-p.x,k.y-p.y)<HIT_R){ hitK=k; boom=true; break; } }
     const expired=p.life<=0||p.dist>(p.range||PROJ_RANGE)||p.x<0||p.x>WORLD||p.y<0||p.y>WORLD;
     if(boom||expired){
@@ -5260,6 +5376,11 @@ function sfx(name){ if(!soundOn) return; try{ if(!actx)actx=new(window.AudioCont
    Halloween keys and per-circuit signature voices kept throughout.
    ================================================================ */
 let musicOn=true;
+/* ---- MP3 playlist (real audio files sit next to index.html) ---- */
+const MUSIC=['circuit_breaker_steel_cathedral.ogg','phantom_angry.ogg','phantom_battle_cry.ogg','phantom_battle_machine.ogg','phantom_battle_static.ogg','phantom_burn.ogg','track2.ogg','track3.ogg','track4.ogg','track5.ogg','track6.ogg','track7.ogg'];
+const MAP_MUSIC=[3,0,5,1,4,2,6,7];   // starting track per map index (Deadly, Frank, Dracula, Crystal, Raccoon, Amityville, Inferno, Yard)
+let musicVol=0.5; try{ const _mv=localStorage.getItem('sinisterKartMusVol'); if(_mv!==null) musicVol=Math.max(0,Math.min(1,+_mv)); }catch(e){}
+let musicEl=null, musicQ=[], musicQi=0;
 const mtof=m=>440*Math.pow(2,(m-69)/12);
 const MUS={playing:false,step:0,next:0,timer:null,bus:null,nb:null,lp:null,sc:null,spf:0,steps:0};
 
@@ -5679,48 +5800,22 @@ function lofiStep(i,t){
   if(bar>=8 && s===6) lPiano(tt,root+12,MUS.spf*3,0.045);
 }
 
-function musicStart(score){
+function musicEnsure(){ if(!musicEl){ musicEl=new Audio(); musicEl.addEventListener('ended',musicNext); } musicEl.volume=musicVol; return musicEl; }
+function _shuf(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function musicPlayCur(){ if(!musicOn||!soundOn||!musicQ.length) return; const el=musicEnsure();
+  try{ el.src=MUSIC[musicQ[musicQi]]; el.volume=musicVol; const pr=el.play(); if(pr&&pr.catch) pr.catch(()=>{}); }catch(e){} }
+function musicNext(){ if(!musicQ.length) return; musicQi=(musicQi+1)%musicQ.length; musicPlayCur(); }
+function musicQueueFrom(startIdx){ const rest=_shuf(MUSIC.map((_,i)=>i).filter(i=>i!==startIdx)); musicQ=[startIdx,...rest]; musicQi=0; musicPlayCur(); }
+/* race/arena: begin on this map's starting track, then play the rest shuffled */
+function musicStart(startIdx){
   if(!musicOn||!soundOn) return;
-  try{ if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
-    if(actx.state==='suspended') actx.resume();
-    if(MUS.playing) return;
-    const S=score||SCORES[selTrack]||SCORES[0];
-    MUS.sc=S; MUS.spf=60/S.bpm/4;
-    MUS.lofi = (S===LOFI);                       // menu theme runs its own stepper
-    MUS.steps = MUS.lofi ? LOFI_STEPS : STEPS;
-    MUS.lp=actx.createBiquadFilter(); MUS.lp.type='lowpass'; MUS.lp.frequency.value=S.cut;
-    MUS.bus=actx.createGain(); MUS.bus.gain.value=0.0;
-    MUS.bus.connect(MUS.lp); MUS.lp.connect(actx.destination);
-    MUS.bus.gain.linearRampToValueAtTime(S.gain,actx.currentTime+0.9);
-    MUS.step=0; MUS.next=actx.currentTime+0.08; MUS.playing=true;
-    MUS.timer=setInterval(()=>{
-      if(!MUS.playing) return;
-      while(MUS.next < actx.currentTime+0.12){
-        (MUS.lofi?lofiStep:musStep)(MUS.step,MUS.next);
-        MUS.next+=MUS.spf; MUS.step=(MUS.step+1)%MUS.steps;
-      }
-    },25);
-  }catch(e){}
+  const idx=(typeof startIdx==='number' && startIdx>=0 && startIdx<MUSIC.length) ? startIdx : (MAP_MUSIC[selTrack]||0);
+  musicQueueFrom(idx);
 }
-/* Browsers won't start audio before a gesture, so this gets called again on the
-   first key or click as well as when the menu opens. */
-function menuMusic(){
-  if(MUS.playing && MUS.sc===LOFI) return;            // already running
-  if(MUS.playing) musicStop();
-  musicStart(LOFI);
-}
-function stopMenuMusic(){ if(MUS.playing && MUS.sc===LOFI) musicStop(); }
-function musicStop(){
-  if(!MUS.playing) return;
-  MUS.playing=false;
-  if(MUS.timer){ clearInterval(MUS.timer); MUS.timer=null; }
-  try{ const b=MUS.bus, l=MUS.lp, t=actx.currentTime;
-    b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value,t);
-    b.gain.linearRampToValueAtTime(0.0001,t+0.35);
-    setTimeout(()=>{ try{b.disconnect();l.disconnect();}catch(e){} },600);
-  }catch(e){}
-  MUS.bus=null; MUS.lp=null;
-}
+/* menu bed — gesture-gated by the browser, so this is called again on first input */
+function menuMusic(){ if(!musicOn||!soundOn) return; if(musicEl && !musicEl.paused && !musicEl.ended) return; musicQueueFrom(0); }
+function stopMenuMusic(){ /* the playlist just keeps running into the race */ }
+function musicStop(){ if(musicEl){ try{ musicEl.pause(); }catch(e){} } }
 
 /* ================================================================
    MULTIPLAYER — Firebase Realtime Database
